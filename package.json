@@ -1,32 +1,35 @@
 {
-  "name": "agora",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "start": "node ./dist/server/entry.mjs",
-    "preview": "astro preview",
-    "check": "astro check",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@astrojs/node": "^9.0.0",
-    "astro": "^5.7.0",
-    "drizzle-orm": "^0.43.0",
-    "postgres": "^3.4.5"
-  },
-  "devDependencies": {
-    "@astrojs/check": "^0.9.8",
-    "@tailwindcss/vite": "^4.1.0",
-    "@types/node": "^22.15.0",
-    "drizzle-kit": "^0.31.0",
-    "tailwindcss": "^4.1.0",
-    "typescript": "^5.8.0",
-    "vitest": "^3.1.0"
-  }
+    "name":  "agora",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "dev":  "astro dev",
+                    "build":  "astro build",
+                    "start":  "node ./dist/server/entry.mjs",
+                    "preview":  "astro preview",
+                    "check":  "astro check",
+                    "db:generate":  "drizzle-kit generate",
+                    "db:migrate":  "drizzle-kit migrate",
+                    "db:push":  "drizzle-kit push",
+                    "test":  "vitest run"
+                },
+    "dependencies":  {
+                         "@astrojs/node":  "^9.0.0",
+                         "astro":  "^5.7.0",
+                         "drizzle-orm":  "^0.43.0",
+                         "postgres":  "^3.4.5"
+                     },
+    "devDependencies":  {
+                            "@astrojs/check":  "^0.9.8",
+                            "@tailwindcss/vite":  "^4.1.0",
+                            "@types/node":  "^22.15.0",
+                            "drizzle-kit":  "^0.31.0",
+                            "tailwindcss":  "^4.1.0",
+                            "typescript":  "^5.8.0",
+                            "vitest":  "^3.1.0"
+                        },
+    "engines":  {
+                    "node":  "\u003e=20.0.0"
+                }
 }

@@ -1,4 +1,4 @@
-﻿# Agora
+# Agora
 
 Multi-room live chat app built with Astro SSR + HTMX + SSE + Alpine + PostgreSQL/Drizzle.
 
@@ -92,3 +92,11 @@ Use `QA_CHECKLIST.md` before final submission/deploy.
 - SSE requires a persistent server process. Railway supports this.
 - For production hardening, add CSRF protection and stricter per-route rate limits.
 
+
+## Railway Node Version Fix
+
+If Railway still builds with an older Node (for example `18.20.5`) after pulling latest commits, set service variable:
+
+- `NIXPACKS_NODE_VERSION=20`
+
+Then trigger a fresh deploy.
