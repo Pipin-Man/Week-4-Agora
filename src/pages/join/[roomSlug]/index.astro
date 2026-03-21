@@ -1,0 +1,15 @@
+﻿---
+import { getCurrentSession } from "../../../lib/session";
+
+const { roomSlug } = Astro.params;
+if (!roomSlug) {
+  return Astro.redirect("/");
+}
+
+const existing = await getCurrentSession(Astro);
+if (existing) {
+  return Astro.redirect(`/chat/${roomSlug}`);
+}
+
+return Astro.redirect(`/?room=${encodeURIComponent(roomSlug)}`);
+---

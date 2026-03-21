@@ -1,0 +1,62 @@
+﻿---
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+}
+
+const { title = "Agora" } = Astro.props;
+---
+<!doctype html>
+<html lang="en" x-data="{ dark: localStorage.getItem('agora_theme') === 'dark' }" x-init="if (dark) document.documentElement.classList.add('dark')">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <script is:inline defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  </head>
+  <body class="antialiased">
+    <slot />
+    <audio id="notify-sound" preload="none" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
+    <script is:inline>
+      document.addEventListener("alpine:init", () => {
+        const alpine = window.Alpine;
+        if (!alpine) return;
+
+        alpine.data("themeToggle", () => ({
+          dark: localStorage.getItem("agora_theme") === "dark",
+          toggle() {
+            this.dark = !this.dark;
+            document.documentElement.classList.toggle("dark", this.dark);
+            localStorage.setItem("agora_theme", this.dark ? "dark" : "light");
+          }
+        }));
+      });
+
+      window.agoraSound = {
+        enabled: localStorage.getItem("agora_sound") !== "off",
+        set(next) {
+          this.enabled = next;
+          localStorage.setItem("agora_sound", next ? "on" : "off");
+        },
+        play() {
+          if (!this.enabled) return;
+          const node = document.getElementById("notify-sound");
+          if (node instanceof HTMLAudioElement) {
+            node.currentTime = 0;
+            node.play().catch(() => {});
+          }
+        }
+      };
+
+      document.body.addEventListener("sse:message:new", () => {
+        window.agoraSound.play();
+      });
+    </script>
+  </body>
+</html>

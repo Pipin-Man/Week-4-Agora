@@ -1,0 +1,59 @@
+﻿---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { getCurrentSession } from "../lib/session";
+
+const roomSlug = Astro.url.searchParams.get("room") || "lobby";
+const existing = await getCurrentSession(Astro);
+if (existing) {
+  return Astro.redirect(`/chat/${roomSlug}`);
+}
+---
+<BaseLayout title="Agora | Entry">
+  <main class="mx-auto flex min-h-screen w-full max-w-5xl items-center px-4 py-8">
+    <section class="grid w-full gap-6 rounded-3xl border border-zinc-200 bg-white/80 p-6 shadow-xl backdrop-blur md:grid-cols-2 dark:border-zinc-800 dark:bg-zinc-900/75">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide text-sky-600">Agora</p>
+        <h1 class="mt-2 text-3xl font-bold text-zinc-900 dark:text-zinc-100">Live multi-room chat</h1>
+        <p class="mt-3 text-sm text-zinc-600 dark:text-zinc-300">EN/GR ready. Pick a profile or join quickly as a passerby.</p>
+        <ul class="mt-6 space-y-2 text-sm text-zinc-700 dark:text-zinc-300">
+          <li>Instant messages with SSE</li>
+          <li>Presence and typing indicators</li>
+          <li>Invite links for each room</li>
+        </ul>
+      </div>
+
+      <div class="space-y-4">
+        <form method="post" action="/api/session/start" class="space-y-3 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+          <input type="hidden" name="nextRoom" value={roomSlug} />
+          <input type="hidden" name="mode" value="normal" />
+
+          <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Normal profile</h2>
+          <label class="block text-xs font-medium">Nickname *</label>
+          <input required minlength="2" maxlength="40" name="nickname" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
+
+          <label class="block text-xs font-medium">Email (optional)</label>
+          <input type="email" name="email" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
+
+          <label class="block text-xs font-medium">Avatar color</label>
+          <input type="color" name="color" value="#0ea5e9" class="h-10 w-full rounded-lg border border-zinc-300 bg-white px-2 dark:border-zinc-700 dark:bg-zinc-950" />
+
+          <button class="w-full rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white dark:bg-zinc-100 dark:text-zinc-900">Enter chat</button>
+        </form>
+
+        <form method="post" action="/api/session/start" class="space-y-3 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+          <input type="hidden" name="nextRoom" value={roomSlug} />
+          <input type="hidden" name="mode" value="guest" />
+
+          <h2 class="text-lg font-semibold text-zinc-900 dark:text-zinc-100">Just passing by</h2>
+          <label class="block text-xs font-medium">Nickname *</label>
+          <input required minlength="2" maxlength="40" name="nickname" placeholder="Guest name" class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
+
+          <label class="block text-xs font-medium">Color</label>
+          <input type="color" name="color" value="#f97316" class="h-10 w-full rounded-lg border border-zinc-300 bg-white px-2 dark:border-zinc-700 dark:bg-zinc-950" />
+
+          <button class="w-full rounded-lg border border-zinc-300 px-4 py-2 text-sm font-semibold dark:border-zinc-700">Join as guest</button>
+        </form>
+      </div>
+    </section>
+  </main>
+</BaseLayout>

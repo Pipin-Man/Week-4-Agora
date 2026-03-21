@@ -1,0 +1,10 @@
+﻿---
+import { getCurrentSession } from "../../lib/session";
+
+const session = await getCurrentSession(Astro);
+if (!session) {
+  return Astro.redirect("/");
+}
+
+return Astro.redirect("/chat/lobby");
+---

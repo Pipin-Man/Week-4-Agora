@@ -1,0 +1,317 @@
+﻿---
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { copy } from "../../../lib/constants";
+import { renderMessage, renderLoadOlderButton } from "../../../lib/render";
+import {
+  createMessage,
+  findRoomBySlug,
+  joinRoom,
+  listOnlineUsers,
+  listRecentMessages,
+  listRooms,
+  markMentionsSeen,
+  markRoomActivity,
+  unreadMentionCount
+} from "../../../lib/rooms";
+import { getCurrentSession } from "../../../lib/session";
+import { sseHub } from "../../../lib/sse";
+
+const locale = "en" as const;
+const currentCopy = copy[locale];
+
+const session = await getCurrentSession(Astro);
+if (!session) {
+  return Astro.redirect("/");
+}
+
+const roomSlug = Astro.params.roomSlug;
+if (!roomSlug) {
+  return Astro.redirect("/chat/lobby");
+}
+
+const room = await findRoomBySlug(roomSlug);
+if (!room) {
+  Astro.response.status = 404;
+}
+
+if (room) {
+  const wasNewJoin = await joinRoom(room.id, session.id);
+  await markRoomActivity(room.id, session.id);
+  await markMentionsSeen(session.id, room.id);
+
+  if (wasNewJoin) {
+    const systemMessage = await createMessage({
+      roomId: room.id,
+      senderSessionId: session.id,
+      body: `${session.displayName} joined the room`,
+      type: "system"
+    });
+
+    sseHub.publish({
+      roomId: room.id,
+      event: "system:new",
+      html: `<ul id="message-list" hx-swap-oob="beforeend">${renderMessage({
+        id: systemMessage.id,
+        type: "system",
+        body: systemMessage.body,
+        displayName: session.displayName,
+        color: session.color,
+        createdAt: new Date(systemMessage.createdAt)
+      })}</ul>`
+    });
+  }
+}
+
+const [rooms, onlineUsers, mentionCount, messageRows] = room
+  ? await Promise.all([
+      listRooms(),
+      listOnlineUsers(room.id),
+      unreadMentionCount(session.id),
+      listRecentMessages(room.id, 30)
+    ])
+  : [[], [], 0, [] as Awaited<ReturnType<typeof listRecentMessages>>];
+
+const orderedMessages = [...messageRows].reverse();
+const nextCursor = messageRows.length ? messageRows[messageRows.length - 1].createdAt.toISOString() : null;
+const inviteLink = room ? `${Astro.url.origin}/join/${room.slug}` : "";
+const onlineNames = onlineUsers.map((user) => user.displayName);
+---
+<BaseLayout title={`Agora | ${room?.name ?? "Not Found"}`}>
+  {room ? (
+    <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-4 p-3 md:p-4" x-data="{ inviteOpen: false }">
+      <header class="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white/70 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
+        <div>
+          <h1 class="text-lg font-semibold">Agora</h1>
+          <p class="text-xs text-zinc-500 dark:text-zinc-400">{session.displayName} • {session.mode === "guest" ? "Guest" : "Profile"}</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700" @click="inviteOpen = true">{currentCopy.invite}</button>
+          <button id="sound-toggle" type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">Sound: On</button>
+          <div id="mention-bell-wrap">
+            <button id="mention-bell" type="button" class="relative rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">
+              Bell
+              {mentionCount > 0 && <span class="absolute -right-1 -top-1 rounded-full bg-red-500 px-1 text-[10px] text-white">{mentionCount}</span>}
+            </button>
+          </div>
+          <a href="/settings/profile" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">Profile</a>
+        </div>
+      </header>
+
+      <section class="grid min-h-[80vh] gap-3 md:grid-cols-[250px_1fr_220px]" hx-ext="sse" sse-connect={`/api/rooms/${room.id}/events`}>
+        <aside class="rounded-2xl border border-zinc-200 bg-white/75 p-3 dark:border-zinc-800 dark:bg-zinc-900/75">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Rooms</h2>
+          <ul class="mt-2 space-y-1">
+            {rooms.map((item) => (
+              <li>
+                <a
+                  href={`/chat/${item.slug}`}
+                  class:list={[
+                    "block rounded-lg px-3 py-2 text-sm",
+                    item.id === room.id
+                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                      : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  ]}
+                >
+                  {item.name}
+                </a>
+              </li>
+            ))}
+          </ul>
+
+          <form method="post" action="/api/rooms" class="mt-4 space-y-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
+            <input name="name" required minlength="2" maxlength="80" placeholder="New room" class="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
+            <input name="description" maxlength="120" placeholder="Description (optional)" class="w-full rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950" />
+            <button class="w-full rounded-md bg-zinc-900 px-2 py-1 text-xs text-white dark:bg-zinc-100 dark:text-zinc-900">Create room</button>
+          </form>
+        </aside>
+
+        <section class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80">
+          <div class="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <h2 class="font-semibold">#{room.name}</h2>
+            {room.description && <p class="text-xs text-zinc-500 dark:text-zinc-400">{room.description}</p>}
+          </div>
+
+          <div class="flex min-h-0 flex-1 flex-col">
+            <div class="px-3 pt-3">{nextCursor && <Fragment set:html={renderLoadOlderButton(nextCursor, room.id)} />}</div>
+            <ul id="message-list" sse-swap="message:new,system:new" hx-swap="beforeend" class="chat-scroll flex-1 space-y-1 overflow-y-auto px-4 py-3">
+              {orderedMessages.length === 0 && (
+                <li class="text-center text-xs text-zinc-500 dark:text-zinc-400">{currentCopy.emptyRoom}</li>
+              )}
+              {orderedMessages.map((msg) => (
+                <Fragment
+                  set:html={renderMessage({
+                    id: msg.id,
+                    type: msg.type,
+                    body: msg.body,
+                    displayName: msg.displayName,
+                    color: msg.color,
+                    createdAt: new Date(msg.createdAt)
+                  })}
+                />
+              ))}
+            </ul>
+
+            <div id="typing-indicator" sse-swap="typing:update" hx-swap="innerHTML" class="h-5 px-4 text-xs text-zinc-500 dark:text-zinc-400"></div>
+            <div id="mention-trigger" sse-swap="mention:notify" class="hidden"></div>
+
+            <form id="composer" method="post" action={`/api/rooms/${room.id}/messages`} hx-post={`/api/rooms/${room.id}/messages`} hx-swap="none" class="border-t border-zinc-200 p-3 dark:border-zinc-800">
+              <textarea id="message-input" name="body" required minlength="1" maxlength="1200" rows="2" placeholder="Write a message..." class="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"></textarea>
+              <div id="mention-suggestions" class="mt-1 hidden rounded-lg border border-zinc-200 bg-white p-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"></div>
+              <div class="mt-2 flex items-center justify-between">
+                <p class="text-[11px] text-zinc-500">Use @username or @everyone</p>
+                <button class="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white">Send</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <aside class="rounded-2xl border border-zinc-200 bg-white/75 p-3 dark:border-zinc-800 dark:bg-zinc-900/75">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500">{currentCopy.online}</h2>
+          <ul id="online-list" sse-swap="presence:update" hx-swap="innerHTML" class="mt-2 space-y-2">
+            {onlineUsers.map((user) => (
+              <li class="flex items-center gap-2 text-sm">
+                <span class="size-2 rounded-full" style={`background:${user.color}`}></span>
+                <span>{user.displayName}</span>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      </section>
+
+      <div x-show="inviteOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="inviteOpen = false">
+        <div class="w-full max-w-md rounded-2xl bg-white p-4 dark:bg-zinc-900">
+          <h3 class="text-lg font-semibold">Invite friend</h3>
+          <p class="mt-1 text-xs text-zinc-500">Share this link:</p>
+          <input id="invite-link" readonly value={inviteLink} class="mt-2 w-full rounded-lg border border-zinc-300 px-3 py-2 text-xs dark:border-zinc-700 dark:bg-zinc-950" />
+          <div class="mt-3 flex justify-end gap-2">
+            <button class="rounded-lg border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700" @click="navigator.clipboard.writeText(document.getElementById('invite-link').value)">Copy</button>
+            <button class="rounded-lg bg-zinc-900 px-3 py-1 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900" @click="inviteOpen = false">Close</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  ) : (
+    <main class="mx-auto flex min-h-screen w-full max-w-xl items-center justify-center p-4">
+      <section class="w-full rounded-2xl border border-zinc-200 bg-white/80 p-6 text-center dark:border-zinc-800 dark:bg-zinc-900/80">
+        <h1 class="text-xl font-semibold">Room not found</h1>
+        <p class="mt-2 text-sm text-zinc-500">This room does not exist or the invite is invalid.</p>
+        <a href="/chat/lobby" class="mt-4 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">Go to Lobby</a>
+      </section>
+    </main>
+  )}
+
+  {room && (
+    <script is:inline define:vars={{ roomId: room.id, onlineNames, sessionName: session.displayName }}>
+      const form = document.getElementById("composer");
+      const input = document.getElementById("message-input");
+      const suggestionBox = document.getElementById("mention-suggestions");
+      const soundToggle = document.getElementById("sound-toggle");
+      let typingTimer;
+
+      function postTyping(typing) {
+        fetch(`/api/rooms/${roomId}/typing`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ typing: typing ? "1" : "0" }).toString()
+        }).catch(() => {});
+      }
+
+      function insertMention(name) {
+        if (!(input instanceof HTMLTextAreaElement)) return;
+        const cursor = input.selectionStart || input.value.length;
+        const head = input.value.slice(0, cursor);
+        const tail = input.value.slice(cursor);
+        const replaced = head.replace(/@([a-zA-Z0-9_]*)$/, `@${name} `);
+        input.value = `${replaced}${tail}`;
+        input.focus();
+        suggestionBox?.classList.add("hidden");
+      }
+
+      function updateMentionSuggestions() {
+        if (!(input instanceof HTMLTextAreaElement) || !suggestionBox) return;
+        const cursor = input.selectionStart || input.value.length;
+        const head = input.value.slice(0, cursor);
+        const match = head.match(/(^|\s)@([a-zA-Z0-9_]*)$/);
+
+        if (!match) {
+          suggestionBox.classList.add("hidden");
+          suggestionBox.innerHTML = "";
+          return;
+        }
+
+        const query = match[2].toLowerCase();
+        const base = ["everyone", ...onlineNames.filter((name) => name.toLowerCase() !== sessionName.toLowerCase())];
+        const candidates = base.filter((name) => name.toLowerCase().startsWith(query)).slice(0, 6);
+
+        if (!candidates.length) {
+          suggestionBox.classList.add("hidden");
+          suggestionBox.innerHTML = "";
+          return;
+        }
+
+        suggestionBox.innerHTML = candidates
+          .map(
+            (name) =>
+              `<button type=\"button\" data-name=\"${name}\" class=\"mr-1 mb-1 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700\">@${name}</button>`
+          )
+          .join("");
+        suggestionBox.classList.remove("hidden");
+      }
+
+      input?.addEventListener("input", () => {
+        postTyping(true);
+        updateMentionSuggestions();
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(() => postTyping(false), 1200);
+      });
+
+      suggestionBox?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLButtonElement)) return;
+        const name = target.dataset.name;
+        if (name) {
+          insertMention(name);
+        }
+      });
+
+      form?.addEventListener("submit", () => {
+        setTimeout(() => {
+          if (input instanceof HTMLTextAreaElement) {
+            input.value = "";
+          }
+          if (suggestionBox) {
+            suggestionBox.classList.add("hidden");
+            suggestionBox.innerHTML = "";
+          }
+          postTyping(false);
+        }, 10);
+      });
+
+      setInterval(() => {
+        fetch(`/api/presence/ping?roomId=${roomId}`, { method: "POST" }).catch(() => {});
+      }, 25000);
+
+      if (soundToggle) {
+        const paintSound = () => {
+          soundToggle.textContent = `Sound: ${window.agoraSound.enabled ? "On" : "Off"}`;
+        };
+
+        paintSound();
+        soundToggle.addEventListener("click", () => {
+          window.agoraSound.set(!window.agoraSound.enabled);
+          paintSound();
+        });
+      }
+
+      document.body.addEventListener("sse:mention:notify", () => {
+        if (window.htmx) {
+          window.htmx.ajax("GET", "/api/session/mention-bell", {
+            target: "#mention-bell-wrap",
+            swap: "innerHTML"
+          });
+        }
+      });
+    </script>
+  )}
+</BaseLayout>

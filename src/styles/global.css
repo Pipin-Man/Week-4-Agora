@@ -1,0 +1,43 @@
+﻿@import "tailwindcss";
+
+:root {
+  --surface: #f8fafc;
+  --panel: #ffffff;
+  --text: #111827;
+}
+
+.dark {
+  --surface: #09090b;
+  --panel: #18181b;
+  --text: #f4f4f5;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: radial-gradient(circle at top right, #dbeafe 0%, var(--surface) 40%);
+  color: var(--text);
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+.dark body {
+  background: radial-gradient(circle at top right, #1e293b 0%, var(--surface) 40%);
+}
+
+.chat-scroll {
+  scrollbar-width: thin;
+}
+
+.message-highlight {
+  animation: flash 1.6s ease;
+}
+
+@keyframes flash {
+  from {
+    background: rgba(59, 130, 246, 0.25);
+  }
+  to {
+    background: transparent;
+  }
+}
