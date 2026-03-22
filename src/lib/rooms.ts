@@ -40,6 +40,28 @@ export async function listRooms() {
   return rows;
 }
 
+export async function listRoomsWithOnlineCounts() {
+  const rows = await listRooms();
+  const db = getDb();
+  const threshold = new Date(Date.now() - PRESENCE_STALE_MS);
+
+  const counts = await db
+    .select({
+      roomId: roomMembers.roomId,
+      count: sql<number>`count(*)`
+    })
+    .from(roomMembers)
+    .where(and(eq(roomMembers.status, "active"), gt(roomMembers.lastActiveAt, threshold)))
+    .groupBy(roomMembers.roomId);
+
+  const byRoom = new Map(counts.map((row) => [row.roomId, Number(row.count)]));
+
+  return rows.map((room) => ({
+    ...room,
+    onlineCount: byRoom.get(room.id) ?? 0
+  }));
+}
+
 export async function findRoomBySlug(slug: string) {
   await ensureLobby();
   const db = getDb();
@@ -63,6 +85,29 @@ export async function findUserNicknameById(userId: string) {
 
   return found[0]?.nickname ?? null;
 }
+
+export async function deleteRoomById(roomId: string) {
+  const db = getDb();
+  const found = await db
+    .select({ id: rooms.id, slug: rooms.slug })
+    .from(rooms)
+    .where(eq(rooms.id, roomId))
+    .limit(1);
+
+  const target = found[0];
+  if (!target) {
+    return { ok: false as const, reason: "not_found" as const };
+  }
+
+  if (target.slug === LOBBY_SLUG) {
+    return { ok: false as const, reason: "forbidden" as const };
+  }
+
+  await db.delete(rooms).where(eq(rooms.id, roomId));
+  roomListCache = null;
+  return { ok: true as const };
+}
+
 export async function createRoom(params: { name: string; description?: string | null; createdBy?: string | null }) {
   await ensureLobby();
   const db = getDb();
