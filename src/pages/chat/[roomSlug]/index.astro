@@ -63,8 +63,8 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
 ---
 <BaseLayout title={`Agora | ${room?.name ?? "Not Found"}`}>
   {room ? (
-    <div x-data="{ inviteOpen: false, roomOpen: false, roomsDropdownOpen: false }" class="h-screen">
-      <main class="mx-auto flex h-screen w-full max-w-7xl flex-col gap-3 p-3 pb-44 md:p-4 md:pb-36">
+    <div x-data="{ inviteOpen: false, roomOpen: false, roomsDropdownOpen: false }" x-on:close-mobile-rooms.window="roomsDropdownOpen = false" class="h-screen">
+      <main class="mx-auto flex h-screen w-full max-w-7xl flex-col gap-3 p-3 pb-48 md:p-4 md:pb-36">
         <header class="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white/70 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
           <div>
             <h1 class="text-lg font-semibold">Agora</h1>
@@ -74,8 +74,8 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
           <button id="sound-toggle" type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">Sound: On</button>
         </header>
 
-        <section class="grid min-h-0 flex-1 gap-3 [grid-template-columns:clamp(104px,22vw,260px)_minmax(0,1fr)_clamp(96px,20vw,240px)] max-[920px]:grid-cols-1">
-          <aside class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75 max-[920px]:hidden">
+        <section id="chat-layout-grid" class="grid min-h-0 flex-1 gap-3" style="grid-template-columns:minmax(0,1fr) minmax(0,2.6fr) minmax(0,1fr);">
+          <aside id="rooms-sidebar" class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75">
             <div class="flex h-14 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
               <h2 class="text-lg font-semibold">Rooms</h2>
               <button type="button" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" @click="roomOpen = true">Add Room</button>
@@ -115,15 +115,15 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
             </div>
           </aside>
 
-          <section class="hidden flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80 max-[920px]:flex">
+          <section id="rooms-mobile-block" class="hidden flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80">
             <div class="flex h-14 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
               <h2 class="text-lg font-semibold">Rooms</h2>
               <div class="flex items-center gap-3">
                 <button type="button" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" @click="roomOpen = true">Add Room</button>
-                <button type="button" class="text-xs font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100" @click="roomsDropdownOpen = !roomsDropdownOpen" x-text="roomsDropdownOpen ? 'Hide' : 'Show'"></button>
+                <button id="rooms-dropdown-toggle" type="button" class="text-xs font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100" @click="roomsDropdownOpen = !roomsDropdownOpen" x-text="roomsDropdownOpen ? 'Hide' : 'Show'"></button>
               </div>
             </div>
-            <div x-show="roomsDropdownOpen" x-cloak class="max-h-64 overflow-y-auto p-3">
+            <div x-show="roomsDropdownOpen" x-cloak @click.outside="roomsDropdownOpen = false" class="max-h-[45vh] overflow-y-auto p-3">
               <ul class="divide-y divide-zinc-200 dark:divide-zinc-800">
                 {rooms.map((item) => (
                   <li class="py-2">
@@ -159,7 +159,7 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
             </div>
           </section>
 
-          <section class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80">
+          <section id="messages-panel" class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80">
             <div class="border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
               <div class="flex items-center justify-between gap-3">
                 <div class="min-w-0">
@@ -167,29 +167,23 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
                   <p class="truncate text-xs text-zinc-500 dark:text-zinc-400">{room.description || "No description"}</p>
                 </div>
 
-                <button id="members-toggle" type="button" class="inline-flex items-center gap-2 rounded-lg border border-zinc-300 px-2 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-200">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm10 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                  <span id="members-count-label">{onlineUsers.length} in the room</span>
-                </button>
+                <div class="flex items-center gap-2">
+                  <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200" @click="inviteOpen = true" title="Invite friend" aria-label="Invite friend">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
+                    </svg>
+                  </button>
+
+                  <button id="members-toggle" type="button" class="inline-flex items-center gap-2 rounded-lg border border-zinc-300 px-2 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-200" title="Hide members panel" aria-label="Toggle members panel" aria-pressed="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm10 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    <span id="members-count-label">{onlineUsers.length} in the room</span>
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div id="members-inline-panel" class="hidden border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
-              <ul id="members-inline-list" class="space-y-2">
-                {onlineUsers.length > 0 ? (
-                  onlineUsers.map((user) => (
-                    <li data-online="1" class="flex items-center gap-2 text-sm">
-                      <span class="size-2 rounded-full" style={`background:${user.color}`}></span>
-                      <span>{user.displayName}</span>
-                    </li>
-                  ))
-                ) : (
-                  <li data-empty="1" class="text-xs text-zinc-500 dark:text-zinc-400">No one online yet</li>
-                )}
-              </ul>
-            </div>
 
             <div id="message-scroll" class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               <ul id="message-list" hx-swap="beforeend" class="space-y-1">
@@ -214,7 +208,7 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
             <div id="typing-indicator" class="h-8 border-t border-zinc-200 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"></div>
           </section>
 
-          <aside class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75 max-[920px]:hidden">
+          <aside id="online-sidebar" class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75">
             <div class="flex h-14 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
               <h2 class="text-lg font-semibold">{currentCopy.online}</h2>
               <span id="online-count" class="text-xs text-zinc-500 dark:text-zinc-400">{onlineUsers.length}</span>
@@ -238,7 +232,7 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         </section>
       </main>
 
-      <footer class="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
+      <footer class="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
         <div class="mx-auto grid w-full max-w-7xl gap-3 px-3 py-3 md:grid-cols-[33%_1fr] md:px-4">
           <section class="relative rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
             <div class="flex items-start justify-between gap-2">
@@ -257,12 +251,12 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
                   </button>
                 </div>
 
-                <div id="notifications-panel" class="absolute bottom-10 right-0 z-50 hidden w-[min(92vw,28rem)] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+                <div id="notifications-panel" class="absolute bottom-10 right-0 z-50 hidden w-[min(92vw,28rem)] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl max-sm:bottom-11 max-sm:right-[-0.25rem] max-sm:w-[calc(100vw-1.25rem)] dark:border-zinc-800 dark:bg-zinc-900">
                   <div class="flex h-11 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
                     <h3 class="text-sm font-semibold">Notifications</h3>
                     <button id="notifications-close" type="button" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">Close</button>
                   </div>
-                  <ul id="notifications-list" class="max-h-80 overflow-y-auto">
+                  <ul id="notifications-list" class="max-h-80 overflow-y-auto max-sm:max-h-[60vh]">
                     <li class="px-3 py-3 text-xs text-zinc-500 dark:text-zinc-400">No unread notifications</li>
                   </ul>
                 </div>
@@ -271,7 +265,6 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
 
             <div class="mt-2 flex flex-wrap items-center gap-3 text-xs">
               <a href="/settings/profile" class="text-sky-700 hover:underline dark:text-sky-300">Change name</a>
-              <button type="button" class="text-sky-700 hover:underline dark:text-sky-300" @click="inviteOpen = true">{currentCopy.invite}</button>
               <form method="post" action="/api/session/logout">
                 <button class="text-rose-600 hover:underline dark:text-rose-300">Logout</button>
               </form>
@@ -280,7 +273,7 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
 
           <section class="rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
             <form id="composer" method="post" action={`/api/rooms/${room.id}/messages`} hx-post={`/api/rooms/${room.id}/messages`} hx-swap="none">
-              <textarea id="message-input" name="body" required minlength="1" maxlength="1200" rows="2" placeholder="Write a message..." class="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"></textarea>
+              <textarea id="message-input" name="body" required minlength="1" maxlength="1200" rows="2" placeholder="Write a message..." class="w-full rounded-xl border border-zinc-300 px-3 py-2 text-base md:text-sm dark:border-zinc-700 dark:bg-zinc-950"></textarea>
               <div id="mention-suggestions" class="mt-1 hidden rounded-lg border border-zinc-200 bg-white p-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"></div>
               <div class="mt-2 flex items-center justify-between">
                 <p class="text-[11px] text-zinc-500">Use @username or @everyone</p>
@@ -343,10 +336,14 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       const notificationsPanel = document.getElementById("notifications-panel");
       const notificationsList = document.getElementById("notifications-list");
       const notificationsClose = document.getElementById("notifications-close");
+      const roomsDropdownToggle = document.getElementById("rooms-dropdown-toggle");
       const membersToggle = document.getElementById("members-toggle");
-      const membersInlinePanel = document.getElementById("members-inline-panel");
-      const membersInlineList = document.getElementById("members-inline-list");
       const membersCountLabel = document.getElementById("members-count-label");
+      const layoutGrid = document.getElementById("chat-layout-grid");
+      const roomsSidebar = document.getElementById("rooms-sidebar");
+      const roomsMobileBlock = document.getElementById("rooms-mobile-block");
+      const messagesPanel = document.getElementById("messages-panel");
+      const onlineSidebar = document.getElementById("online-sidebar");
       const deleteForms = document.querySelectorAll(".room-delete-form");
 
       let typingTimer;
@@ -354,6 +351,8 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       let notificationsOpen = false;
       let notificationsLoading = false;
       let onlineNamePool = Array.isArray(onlineNames) ? [...onlineNames] : [];
+      let onlineManualHidden = false;
+      let onlineAutoHidden = false;
 
       function postTyping(typing) {
         fetch(`/api/rooms/${roomId}/typing`, {
@@ -380,6 +379,59 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         if (membersCountLabel instanceof HTMLElement) {
           membersCountLabel.textContent = `${count} in the room`;
         }
+      }
+
+      function updateMembersToggleVisual() {
+        if (!(membersToggle instanceof HTMLButtonElement)) return;
+
+        const roomsDropdownMode = roomsMobileBlock instanceof HTMLElement && !roomsMobileBlock.classList.contains("hidden");
+        const disabled = roomsDropdownMode || onlineAutoHidden;
+        const onlineVisible = onlineSidebar instanceof HTMLElement && !onlineSidebar.classList.contains("hidden");
+
+        membersToggle.disabled = disabled;
+        membersToggle.classList.toggle("opacity-50", disabled);
+        membersToggle.classList.toggle("cursor-not-allowed", disabled);
+        membersToggle.setAttribute("aria-pressed", onlineVisible ? "true" : "false");
+
+        if (disabled) {
+          membersToggle.title = "Members panel is unavailable in this layout";
+        } else {
+          membersToggle.title = onlineVisible ? "Hide members panel" : "Show members panel";
+        }
+      }
+
+      function applyResponsiveLayout() {
+        if (!(layoutGrid instanceof HTMLElement) || !(roomsSidebar instanceof HTMLElement) || !(onlineSidebar instanceof HTMLElement) || !(messagesPanel instanceof HTMLElement) || !(roomsMobileBlock instanceof HTMLElement)) {
+          return;
+        }
+
+        roomsSidebar.classList.remove("hidden");
+        onlineSidebar.classList.remove("hidden");
+        roomsMobileBlock.classList.add("hidden");
+        roomsMobileBlock.classList.remove("flex");
+        layoutGrid.style.gridTemplateColumns = "minmax(0,1fr) minmax(0,2.6fr) minmax(0,1fr)";
+
+        const onlineWidth = onlineSidebar.getBoundingClientRect().width;
+        onlineAutoHidden = onlineWidth < 180;
+
+        if (onlineAutoHidden || onlineManualHidden) {
+          onlineSidebar.classList.add("hidden");
+          layoutGrid.style.gridTemplateColumns = "minmax(0,1fr) minmax(0,2.6fr)";
+        }
+
+        const roomsWidth = roomsSidebar.getBoundingClientRect().width;
+        const messagesWidth = messagesPanel.getBoundingClientRect().width;
+        const useRoomsDropdown = roomsWidth < 180 || messagesWidth < 450;
+
+        if (useRoomsDropdown) {
+          roomsSidebar.classList.add("hidden");
+          onlineSidebar.classList.add("hidden");
+          roomsMobileBlock.classList.remove("hidden");
+          roomsMobileBlock.classList.add("flex");
+          layoutGrid.style.gridTemplateColumns = "minmax(0,1fr)";
+        }
+
+        updateMembersToggleVisual();
       }
 
       function insertMention(name) {
@@ -487,6 +539,7 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         notificationsPanel.classList.toggle("hidden", !next);
 
         if (next) {
+          window.dispatchEvent(new CustomEvent("close-mobile-rooms"));
           void loadNotifications();
         }
       }
@@ -534,6 +587,10 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         setNotificationsOpen(false);
       });
 
+      roomsDropdownToggle?.addEventListener("click", () => {
+        setNotificationsOpen(false);
+      });
+
       deleteForms.forEach((formNode) => {
         formNode.addEventListener("submit", (event) => {
           if (!window.confirm("Delete this room? This cannot be undone.")) {
@@ -543,8 +600,15 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       });
 
       membersToggle?.addEventListener("click", () => {
-        if (!(membersInlinePanel instanceof HTMLElement)) return;
-        membersInlinePanel.classList.toggle("hidden");
+        if (!(onlineSidebar instanceof HTMLElement) || !(roomsMobileBlock instanceof HTMLElement)) return;
+
+        const roomsDropdownMode = !roomsMobileBlock.classList.contains("hidden");
+        if (roomsDropdownMode || onlineAutoHidden) {
+          return;
+        }
+
+        onlineManualHidden = !onlineManualHidden;
+        applyResponsiveLayout();
       });
 
       document.addEventListener("click", (event) => {
@@ -558,6 +622,14 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
 
         setNotificationsOpen(false);
       });
+
+      const resizeObserver = new ResizeObserver(() => {
+        applyResponsiveLayout();
+      });
+
+      if (layoutGrid instanceof HTMLElement) {
+        resizeObserver.observe(layoutGrid);
+      }
 
       setInterval(() => {
         fetch(`/api/presence/ping?roomId=${roomId}`, { method: "POST" }).catch(() => {});
@@ -581,6 +653,7 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       }
 
       syncOnlineCount();
+      applyResponsiveLayout();
       scrollMessagesToBottom();
       void refreshBell();
 
@@ -613,10 +686,8 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
           if (onlineList) {
             onlineList.innerHTML = event.data;
           }
-          if (membersInlineList) {
-            membersInlineList.innerHTML = event.data;
-          }
           syncOnlineCount();
+          applyResponsiveLayout();
         }
       });
 
@@ -639,10 +710,10 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
 
       window.addEventListener("beforeunload", () => {
         clearTimeout(presenceFlashTimer);
+        resizeObserver.disconnect();
         events.close();
       });
     </script>
   )}
 </BaseLayout>
-
 
