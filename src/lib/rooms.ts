@@ -209,7 +209,7 @@ export async function listRecentMessages(roomId: string, limit = 30) {
     })
     .from(messages)
     .innerJoin(sessions, eq(sessions.id, messages.senderSessionId))
-    .where(eq(messages.roomId, roomId))
+    .where(and(eq(messages.roomId, roomId), eq(messages.type, "user")))
     .orderBy(desc(messages.createdAt))
     .limit(limit);
 }
@@ -230,7 +230,7 @@ export async function listOlderMessages(roomId: string, before: Date, limit = 30
     })
     .from(messages)
     .innerJoin(sessions, eq(sessions.id, messages.senderSessionId))
-    .where(and(eq(messages.roomId, roomId), lt(messages.createdAt, before)))
+    .where(and(eq(messages.roomId, roomId), eq(messages.type, "user"), lt(messages.createdAt, before)))
     .orderBy(desc(messages.createdAt))
     .limit(limit);
 }

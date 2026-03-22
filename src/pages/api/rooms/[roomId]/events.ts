@@ -2,14 +2,8 @@ import type { APIRoute } from "astro";
 import { DISCONNECT_GRACE_MS } from "../../../../lib/constants";
 import { formatSseEvent, sseHub } from "../../../../lib/sse";
 import { requireSession } from "../../../../lib/session";
-import {
-  createMessage,
-  findRoomById,
-  getRoomMember,
-  joinRoom,
-  markRoomAway
-} from "../../../../lib/rooms";
-import { renderMessageOob } from "../../../../lib/render";
+import { findRoomById, getRoomMember, joinRoom, markRoomAway } from "../../../../lib/rooms";
+import { renderPresenceFlash } from "../../../../lib/render";
 import { broadcastPresence } from "../../../../lib/broadcast";
 
 export const GET: APIRoute = async (context) => {
@@ -56,24 +50,10 @@ export const GET: APIRoute = async (context) => {
           try {
             const current = await getRoomMember(roomId, session.id);
             if (current?.status === "away") {
-              const left = await createMessage({
-                roomId,
-                senderSessionId: session.id,
-                body: `${session.displayName} left the room`,
-                type: "system"
-              });
-
               sseHub.publish({
                 roomId,
-                event: "system:new",
-                html: renderMessageOob({
-                  id: left.id,
-                  type: "system",
-                  body: left.body,
-                  displayName: session.displayName,
-                  color: session.color,
-                  createdAt: new Date(left.createdAt)
-                })
+                event: "presence:flash",
+                html: renderPresenceFlash(`${session.displayName} left the room`)
               });
               void broadcastPresence(roomId);
             }

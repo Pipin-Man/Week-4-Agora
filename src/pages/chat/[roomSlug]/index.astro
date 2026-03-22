@@ -1,9 +1,8 @@
 ---
 import BaseLayout from "../../../layouts/BaseLayout.astro";
 import { copy } from "../../../lib/constants";
-import { renderMessage, renderLoadOlderButton } from "../../../lib/render";
+import { renderMessage, renderPresenceFlash } from "../../../lib/render";
 import {
-  createMessage,
   findRoomBySlug,
   joinRoom,
   listOnlineUsers,
@@ -43,125 +42,141 @@ if (room) {
   void markMentionsSeen(session.id, room.id);
 
   if (wasNewJoin) {
-    void (async () => {
-      try {
-        const systemMessage = await createMessage({
-          roomId: room.id,
-          senderSessionId: session.id,
-          body: `${session.displayName} joined the room`,
-          type: "system"
-        });
-
-        sseHub.publish({
-          roomId: room.id,
-          event: "system:new",
-          html: `${renderMessage({
-            id: systemMessage.id,
-            type: "system",
-            body: systemMessage.body,
-            displayName: session.displayName,
-            color: session.color,
-            createdAt: new Date(systemMessage.createdAt)
-          })}`
-        });
-      } catch {
-        // Non-critical: do not block room navigation on join system message errors.
-      }
-    })();
+    sseHub.publish({
+      roomId: room.id,
+      event: "presence:flash",
+      html: renderPresenceFlash(`${session.displayName} joined the room`)
+    });
   }
 
   [onlineUsers, messageRows] = await Promise.all([
     listOnlineUsers(room.id),
-    listRecentMessages(room.id, 20)
+    listRecentMessages(room.id, 40)
   ]);
 }
 
 const [rooms, mentionCount] = await Promise.all([roomsPromise, mentionCountPromise]);
-
-const orderedMessages = [...messageRows].reverse();
-const nextCursor = messageRows.length ? messageRows[messageRows.length - 1].createdAt.toISOString() : null;
+const orderedMessages = messageRows;
 const inviteLink = room ? `${Astro.url.origin}/join/${room.slug}` : "";
 const onlineNames = onlineUsers.map((user) => user.displayName);
 ---
 <BaseLayout title={`Agora | ${room?.name ?? "Not Found"}`}>
   {room ? (
-    <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-4 p-3 md:p-4" x-data="{ inviteOpen: false }">
-      <header class="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white/70 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
-        <div>
-          <h1 class="text-lg font-semibold">Agora</h1>
-          <p class="text-xs text-zinc-500 dark:text-zinc-400">{session.displayName} | {session.mode === "guest" ? "Guest" : "Profile"}</p>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <button type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700" @click="inviteOpen = true">{currentCopy.invite}</button>
-          <button id="sound-toggle" type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">Sound: On</button>
-          <div id="mention-bell-wrap">
-            <button id="mention-bell" type="button" class="relative rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">
-              Bell
-              {mentionCount > 0 && <span class="absolute -right-1 -top-1 rounded-full bg-red-500 px-1 text-[10px] text-white">{mentionCount}</span>}
-            </button>
-          </div>
-          <a href="/settings/profile" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">Profile</a>
-        </div>
-      </header>
-
-      <section class="grid min-h-[80vh] gap-3 md:grid-cols-[250px_1fr_220px]">
-        <aside class="rounded-2xl border border-zinc-200 bg-white/75 p-3 dark:border-zinc-800 dark:bg-zinc-900/75">
-          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Rooms</h2>
-          <ul class="mt-2 space-y-1">
-            {rooms.map((item) => (
-              <li>
-                <a
-                  href={`/chat/${item.slug}`}
-                  class:list={[
-                    "block rounded-lg px-3 py-2 text-sm",
-                    item.id === room.id
-                      ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                      : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  ]}
-                >
-                  {item.name}
-                </a>
-              </li>
-            ))}
-          </ul>
-
-          <form method="post" action="/api/rooms" class="mt-4 space-y-2 rounded-xl border border-zinc-200 p-2 dark:border-zinc-800">
-            <input name="name" required minlength="2" maxlength="80" placeholder="New room" class="w-full rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
-            <input name="description" maxlength="120" placeholder="Description (optional)" class="w-full rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950" />
-            <button class="w-full rounded-md bg-zinc-900 px-2 py-1 text-xs text-white dark:bg-zinc-100 dark:text-zinc-900">Create room</button>
-          </form>
-        </aside>
-
-        <section class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80">
-          <div class="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <h2 class="font-semibold">#{room.name}</h2>
-            {room.description && <p class="text-xs text-zinc-500 dark:text-zinc-400">{room.description}</p>}
+    <div x-data="{ inviteOpen: false, roomOpen: false }" class="h-screen">
+      <main class="mx-auto flex h-screen w-full max-w-7xl flex-col gap-3 p-3 pb-44 md:p-4 md:pb-36">
+        <header class="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white/70 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
+          <div>
+            <h1 class="text-lg font-semibold">Agora</h1>
+            <p class="text-xs text-zinc-500 dark:text-zinc-400">Room #{room.name}</p>
           </div>
 
-          <div class="flex min-h-0 flex-1 flex-col">
-            <div class="px-3 pt-3">{nextCursor && <Fragment set:html={renderLoadOlderButton(nextCursor, room.id)} />}</div>
-            <ul id="message-list" hx-swap="beforeend" class="chat-scroll flex-1 space-y-1 overflow-y-auto px-4 py-3">
-              {orderedMessages.length === 0 && (
-                <li class="text-center text-xs text-zinc-500 dark:text-zinc-400">{currentCopy.emptyRoom}</li>
-              )}
-              {orderedMessages.map((msg) => (
-                <Fragment
-                  set:html={renderMessage({
-                    id: msg.id,
-                    type: msg.type,
-                    body: msg.body,
-                    displayName: msg.displayName,
-                    color: msg.color,
-                    createdAt: new Date(msg.createdAt)
-                  })}
-                />
-              ))}
-            </ul>
+          <div class="flex items-center gap-2">
+            <button id="sound-toggle" type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">Sound: On</button>
+            <div id="mention-bell-wrap">
+              <button id="mention-bell" type="button" class="relative rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">
+                Bell
+                {mentionCount > 0 && <span class="absolute -right-1 -top-1 rounded-full bg-red-500 px-1 text-[10px] text-white">{mentionCount}</span>}
+              </button>
+            </div>
+          </div>
+        </header>
 
-            <div id="typing-indicator" class="h-5 px-4 text-xs text-zinc-500 dark:text-zinc-400"></div>
+        <section class="grid min-h-0 flex-1 gap-3 md:grid-cols-[260px_1fr_240px]">
+          <aside class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75">
+            <div class="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+              <h2 class="text-base font-semibold">Rooms</h2>
+              <button type="button" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" @click="roomOpen = true">Add Room</button>
+            </div>
+            <div class="min-h-0 flex-1 overflow-y-auto p-3">
+              <ul class="space-y-1">
+                {rooms.map((item) => (
+                  <li>
+                    <a
+                      href={`/chat/${item.slug}`}
+                      class:list={[
+                        "block rounded-lg px-3 py-2 text-sm",
+                        item.id === room.id
+                          ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                          : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      ]}
+                    >
+                      {item.name}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </aside>
 
-            <form id="composer" method="post" action={`/api/rooms/${room.id}/messages`} hx-post={`/api/rooms/${room.id}/messages`} hx-swap="none" class="border-t border-zinc-200 p-3 dark:border-zinc-800">
+          <section class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80">
+            <div class="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+              <h2 class="text-base font-semibold">#{room.name}</h2>
+              {room.description && <p class="text-xs text-zinc-500 dark:text-zinc-400">{room.description}</p>}
+            </div>
+
+            <div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+              <ul id="message-list" hx-swap="afterbegin" class="space-y-1">
+                {orderedMessages.length === 0 && (
+                  <li id="empty-room-hint" class="text-center text-xs text-zinc-500 dark:text-zinc-400">{currentCopy.emptyRoom}</li>
+                )}
+                {orderedMessages.map((msg) => (
+                  <Fragment
+                    set:html={renderMessage({
+                      id: msg.id,
+                      type: msg.type,
+                      body: msg.body,
+                      displayName: msg.displayName,
+                      color: msg.color,
+                      createdAt: new Date(msg.createdAt)
+                    })}
+                  />
+                ))}
+              </ul>
+            </div>
+
+            <div id="typing-indicator" class="h-8 border-t border-zinc-200 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"></div>
+          </section>
+
+          <aside class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75">
+            <div class="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+              <h2 class="text-base font-semibold">{currentCopy.online}</h2>
+              <span id="online-count" class="text-xs text-zinc-500 dark:text-zinc-400">{onlineUsers.length}</span>
+            </div>
+            <div id="presence-flash" class="px-3 pt-2"></div>
+            <div class="min-h-0 flex-1 overflow-y-auto p-3 pt-2">
+              <ul id="online-list" class="space-y-2">
+                {onlineUsers.length > 0 ? (
+                  onlineUsers.map((user) => (
+                    <li data-online="1" class="flex items-center gap-2 text-sm">
+                      <span class="size-2 rounded-full" style={`background:${user.color}`}></span>
+                      <span>{user.displayName}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li data-empty="1" class="text-xs text-zinc-500 dark:text-zinc-400">No one online yet</li>
+                )}
+              </ul>
+            </div>
+          </aside>
+        </section>
+      </main>
+
+      <footer class="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
+        <div class="mx-auto grid w-full max-w-7xl gap-3 px-3 py-3 md:grid-cols-[33%_1fr] md:px-4">
+          <section class="rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
+            <p class="text-[11px] text-zinc-500 dark:text-zinc-400">Connected as</p>
+            <p class="text-sm font-bold">{session.displayName}</p>
+            <div class="mt-2 flex flex-wrap items-center gap-3 text-xs">
+              <a href="/settings/profile" class="text-sky-700 hover:underline dark:text-sky-300">Change name</a>
+              <button type="button" class="text-sky-700 hover:underline dark:text-sky-300" @click="inviteOpen = true">{currentCopy.invite}</button>
+              <form method="post" action="/api/session/logout">
+                <button class="text-rose-600 hover:underline dark:text-rose-300">Logout</button>
+              </form>
+            </div>
+          </section>
+
+          <section class="rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
+            <form id="composer" method="post" action={`/api/rooms/${room.id}/messages`} hx-post={`/api/rooms/${room.id}/messages`} hx-swap="none">
               <textarea id="message-input" name="body" required minlength="1" maxlength="1200" rows="2" placeholder="Write a message..." class="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"></textarea>
               <div id="mention-suggestions" class="mt-1 hidden rounded-lg border border-zinc-200 bg-white p-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"></div>
               <div class="mt-2 flex items-center justify-between">
@@ -169,21 +184,9 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
                 <button class="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white">Send</button>
               </div>
             </form>
-          </div>
-        </section>
-
-        <aside class="rounded-2xl border border-zinc-200 bg-white/75 p-3 dark:border-zinc-800 dark:bg-zinc-900/75">
-          <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500">{currentCopy.online}</h2>
-          <ul id="online-list" class="mt-2 space-y-2">
-            {onlineUsers.map((user) => (
-              <li class="flex items-center gap-2 text-sm">
-                <span class="size-2 rounded-full" style={`background:${user.color}`}></span>
-                <span>{user.displayName}</span>
-              </li>
-            ))}
-          </ul>
-        </aside>
-      </section>
+          </section>
+        </div>
+      </footer>
 
       <div x-show="inviteOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="inviteOpen = false">
         <div class="w-full max-w-md rounded-2xl bg-white p-4 dark:bg-zinc-900">
@@ -196,7 +199,21 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
           </div>
         </div>
       </div>
-    </main>
+
+      <div x-show="roomOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="roomOpen = false">
+        <div class="w-full max-w-md rounded-2xl bg-white p-4 dark:bg-zinc-900">
+          <h3 class="text-lg font-semibold">Add room</h3>
+          <form method="post" action="/api/rooms" class="mt-3 space-y-2">
+            <input name="name" required minlength="2" maxlength="80" placeholder="Room name" class="w-full rounded-md border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
+            <input name="description" maxlength="120" placeholder="Description (optional)" class="w-full rounded-md border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
+            <div class="mt-3 flex justify-end gap-2">
+              <button type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700" @click="roomOpen = false">Cancel</button>
+              <button class="rounded-lg bg-zinc-900 px-3 py-1 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">Create</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   ) : (
     <main class="mx-auto flex min-h-screen w-full max-w-xl items-center justify-center p-4">
       <section class="w-full rounded-2xl border border-zinc-200 bg-white/80 p-6 text-center dark:border-zinc-800 dark:bg-zinc-900/80">
@@ -213,7 +230,13 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       const input = document.getElementById("message-input");
       const suggestionBox = document.getElementById("mention-suggestions");
       const soundToggle = document.getElementById("sound-toggle");
+      const messageList = document.getElementById("message-list");
+      const typingIndicator = document.getElementById("typing-indicator");
+      const onlineList = document.getElementById("online-list");
+      const onlineCountNode = document.getElementById("online-count");
+      const presenceFlash = document.getElementById("presence-flash");
       let typingTimer;
+      let presenceFlashTimer;
 
       function postTyping(typing) {
         fetch(`/api/rooms/${roomId}/typing`, {
@@ -259,10 +282,16 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         suggestionBox.innerHTML = candidates
           .map(
             (name) =>
-              `<button type=\"button\" data-name=\"${name}\" class=\"mr-1 mb-1 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700\">@${name}</button>`
+              `<button type="button" data-name="${name}" class="mr-1 mb-1 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">@${name}</button>`
           )
           .join("");
         suggestionBox.classList.remove("hidden");
+      }
+
+      function syncOnlineCount() {
+        if (!onlineList || !onlineCountNode) return;
+        const count = onlineList.querySelectorAll('li[data-online="1"]').length;
+        onlineCountNode.textContent = String(count);
       }
 
       input?.addEventListener("input", () => {
@@ -311,24 +340,18 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         });
       }
 
-      const messageList = document.getElementById("message-list");
-      const typingIndicator = document.getElementById("typing-indicator");
-      const onlineList = document.getElementById("online-list");
+      syncOnlineCount();
 
       const events = new EventSource(`/api/rooms/${roomId}/events`);
 
       events.addEventListener("message:new", (event) => {
         if (messageList && event instanceof MessageEvent) {
-          messageList.insertAdjacentHTML("beforeend", event.data);
+          const emptyHint = document.getElementById("empty-room-hint");
+          if (emptyHint) emptyHint.remove();
+          messageList.insertAdjacentHTML("afterbegin", event.data);
           if (window.agoraSound && typeof window.agoraSound.play === "function") {
             window.agoraSound.play();
           }
-        }
-      });
-
-      events.addEventListener("system:new", (event) => {
-        if (messageList && event instanceof MessageEvent) {
-          messageList.insertAdjacentHTML("beforeend", event.data);
         }
       });
 
@@ -341,6 +364,17 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       events.addEventListener("presence:update", (event) => {
         if (onlineList && event instanceof MessageEvent) {
           onlineList.innerHTML = event.data;
+          syncOnlineCount();
+        }
+      });
+
+      events.addEventListener("presence:flash", (event) => {
+        if (presenceFlash && event instanceof MessageEvent) {
+          presenceFlash.innerHTML = event.data;
+          clearTimeout(presenceFlashTimer);
+          presenceFlashTimer = setTimeout(() => {
+            presenceFlash.innerHTML = "";
+          }, 6500);
         }
       });
 
@@ -354,10 +388,10 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       });
 
       window.addEventListener("beforeunload", () => {
+        clearTimeout(presenceFlashTimer);
         events.close();
       });
     </script>
   )}
 </BaseLayout>
-
 

@@ -1,4 +1,4 @@
-﻿import type { APIContext } from "astro";
+import type { APIContext } from "astro";
 import { and, eq, gt } from "drizzle-orm";
 import { SESSION_COOKIE, SESSION_TTL_DAYS } from "./constants";
 import { getDb } from "./db";
@@ -18,6 +18,15 @@ export function setSessionCookie(context: APIContext, sessionId: string, expires
   context.cookies.set(SESSION_COOKIE, sessionId, {
     path: "/",
     expires: expiresAt,
+    httpOnly: true,
+    sameSite: "lax"
+  });
+}
+
+export function clearSessionCookie(context: APIContext) {
+  context.cookies.set(SESSION_COOKIE, "", {
+    path: "/",
+    expires: new Date(0),
     httpOnly: true,
     sameSite: "lax"
   });
@@ -118,5 +127,13 @@ export async function renameSession(sessionId: string, nextName: string) {
   await db
     .update(sessions)
     .set({ displayName: nextName, lastSeenAt: new Date() })
+    .where(eq(sessions.id, sessionId));
+}
+
+export async function invalidateSession(sessionId: string) {
+  const db = getDb();
+  await db
+    .update(sessions)
+    .set({ expiresAt: new Date() })
     .where(eq(sessions.id, sessionId));
 }
