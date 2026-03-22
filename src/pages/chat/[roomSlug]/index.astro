@@ -4,6 +4,7 @@ import { copy } from "../../../lib/constants";
 import { renderMessage, renderPresenceFlash } from "../../../lib/render";
 import {
   findRoomBySlug,
+  findUserNicknameById,
   joinRoom,
   listOnlineUsers,
   listRecentMessages,
@@ -34,6 +35,8 @@ if (!room) {
 
 const roomsPromise = listRooms();
 const mentionCountPromise = unreadMentionCount(session.id);
+const roomCreatorPromise = room?.createdBy ? findUserNicknameById(room.createdBy) : Promise.resolve<string | null>(null);
+
 let onlineUsers: Awaited<ReturnType<typeof listOnlineUsers>> = [];
 let messageRows: Awaited<ReturnType<typeof listRecentMessages>> = [];
 
@@ -55,10 +58,11 @@ if (room) {
   ]);
 }
 
-const [rooms, mentionCount] = await Promise.all([roomsPromise, mentionCountPromise]);
-const orderedMessages = messageRows;
+const [rooms, mentionCount, roomCreator] = await Promise.all([roomsPromise, mentionCountPromise, roomCreatorPromise]);
+const orderedMessages = [...messageRows].reverse();
 const inviteLink = room ? `${Astro.url.origin}/join/${room.slug}` : "";
 const onlineNames = onlineUsers.map((user) => user.displayName);
+const creatorLabel = roomCreator || "Community";
 ---
 <BaseLayout title={`Agora | ${room?.name ?? "Not Found"}`}>
   {room ? (
@@ -70,21 +74,13 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
             <p class="text-xs text-zinc-500 dark:text-zinc-400">Room #{room.name}</p>
           </div>
 
-          <div class="flex items-center gap-2">
-            <button id="sound-toggle" type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">Sound: On</button>
-            <div id="mention-bell-wrap">
-              <button id="mention-bell" type="button" class="relative rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">
-                Bell
-                {mentionCount > 0 && <span class="absolute -right-1 -top-1 rounded-full bg-red-500 px-1 text-[10px] text-white">{mentionCount}</span>}
-              </button>
-            </div>
-          </div>
+          <button id="sound-toggle" type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">Sound: On</button>
         </header>
 
         <section class="grid min-h-0 flex-1 gap-3 md:grid-cols-[260px_1fr_240px]">
           <aside class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75">
-            <div class="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <h2 class="text-base font-semibold">Rooms</h2>
+            <div class="flex h-14 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
+              <h2 class="text-lg font-semibold">Rooms</h2>
               <button type="button" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" @click="roomOpen = true">Add Room</button>
             </div>
             <div class="min-h-0 flex-1 overflow-y-auto p-3">
@@ -109,13 +105,13 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
           </aside>
 
           <section class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80">
-            <div class="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <h2 class="text-base font-semibold">#{room.name}</h2>
-              {room.description && <p class="text-xs text-zinc-500 dark:text-zinc-400">{room.description}</p>}
+            <div class="flex h-14 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
+              <h2 class="text-lg font-semibold">#{room.name}</h2>
+              <p class="text-xs text-zinc-500 dark:text-zinc-400">Created by {creatorLabel}</p>
             </div>
 
-            <div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-              <ul id="message-list" hx-swap="afterbegin" class="space-y-1">
+            <div id="message-scroll" class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+              <ul id="message-list" hx-swap="beforeend" class="space-y-1">
                 {orderedMessages.length === 0 && (
                   <li id="empty-room-hint" class="text-center text-xs text-zinc-500 dark:text-zinc-400">{currentCopy.emptyRoom}</li>
                 )}
@@ -138,8 +134,8 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
           </section>
 
           <aside class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75">
-            <div class="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <h2 class="text-base font-semibold">{currentCopy.online}</h2>
+            <div class="flex h-14 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
+              <h2 class="text-lg font-semibold">{currentCopy.online}</h2>
               <span id="online-count" class="text-xs text-zinc-500 dark:text-zinc-400">{onlineUsers.length}</span>
             </div>
             <div id="presence-flash" class="px-3 pt-2"></div>
@@ -163,9 +159,35 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
 
       <footer class="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
         <div class="mx-auto grid w-full max-w-7xl gap-3 px-3 py-3 md:grid-cols-[33%_1fr] md:px-4">
-          <section class="rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
-            <p class="text-[11px] text-zinc-500 dark:text-zinc-400">Connected as</p>
-            <p class="text-sm font-bold">{session.displayName}</p>
+          <section class="relative rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <p class="text-[11px] text-zinc-500 dark:text-zinc-400">Connected as</p>
+                <p class="text-sm font-bold">{session.displayName}</p>
+              </div>
+
+              <div class="relative">
+                <div id="mention-bell-wrap">
+                  <button id="mention-bell" type="button" aria-label="Notifications" class="relative inline-flex size-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17H18l-1.405-1.405A2.03 2.03 0 0 1 16 14.158V11a6.002 6.002 0 0 0-4-5.659V4a2 2 0 1 0-4 0v1.341C5.67 6.165 4 8.388 4 11v3.159c0 .538-.214 1.055-.595 1.436L2 17h3.143M9 17a3 3 0 0 0 6 0" />
+                    </svg>
+                    {mentionCount > 0 && <span class="absolute -right-1 -top-1 min-w-4 rounded-full bg-red-500 px-1 text-center text-[10px] leading-4 text-white">{mentionCount}</span>}
+                  </button>
+                </div>
+
+                <div id="notifications-panel" class="absolute bottom-10 right-0 z-50 hidden w-[min(92vw,28rem)] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl dark:border-zinc-800 dark:bg-zinc-900">
+                  <div class="flex h-11 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
+                    <h3 class="text-sm font-semibold">Notifications</h3>
+                    <button id="notifications-close" type="button" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">Close</button>
+                  </div>
+                  <ul id="notifications-list" class="max-h-80 overflow-y-auto">
+                    <li class="px-3 py-3 text-xs text-zinc-500 dark:text-zinc-400">No unread notifications</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
             <div class="mt-2 flex flex-wrap items-center gap-3 text-xs">
               <a href="/settings/profile" class="text-sky-700 hover:underline dark:text-sky-300">Change name</a>
               <button type="button" class="text-sky-700 hover:underline dark:text-sky-300" @click="inviteOpen = true">{currentCopy.invite}</button>
@@ -231,12 +253,21 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       const suggestionBox = document.getElementById("mention-suggestions");
       const soundToggle = document.getElementById("sound-toggle");
       const messageList = document.getElementById("message-list");
+      const messageScroll = document.getElementById("message-scroll");
       const typingIndicator = document.getElementById("typing-indicator");
       const onlineList = document.getElementById("online-list");
       const onlineCountNode = document.getElementById("online-count");
       const presenceFlash = document.getElementById("presence-flash");
+      const bellWrap = document.getElementById("mention-bell-wrap");
+      const notificationsPanel = document.getElementById("notifications-panel");
+      const notificationsList = document.getElementById("notifications-list");
+      const notificationsClose = document.getElementById("notifications-close");
+
       let typingTimer;
       let presenceFlashTimer;
+      let notificationsOpen = false;
+      let notificationsLoading = false;
+      let onlineNamePool = Array.isArray(onlineNames) ? [...onlineNames] : [];
 
       function postTyping(typing) {
         fetch(`/api/rooms/${roomId}/typing`, {
@@ -244,6 +275,11 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({ typing: typing ? "1" : "0" }).toString()
         }).catch(() => {});
+      }
+
+      function scrollMessagesToBottom() {
+        if (!(messageScroll instanceof HTMLElement)) return;
+        messageScroll.scrollTop = messageScroll.scrollHeight;
       }
 
       function insertMention(name) {
@@ -270,7 +306,7 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         }
 
         const query = match[2].toLowerCase();
-        const base = ["everyone", ...onlineNames.filter((name) => name.toLowerCase() !== sessionName.toLowerCase())];
+        const base = ["everyone", ...onlineNamePool.filter((name) => name.toLowerCase() !== sessionName.toLowerCase())];
         const candidates = base.filter((name) => name.toLowerCase().startsWith(query)).slice(0, 6);
 
         if (!candidates.length) {
@@ -290,8 +326,64 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
 
       function syncOnlineCount() {
         if (!onlineList || !onlineCountNode) return;
-        const count = onlineList.querySelectorAll('li[data-online="1"]').length;
-        onlineCountNode.textContent = String(count);
+        const entries = Array.from(onlineList.querySelectorAll('li[data-online="1"]'));
+        const names = entries
+          .map((entry) => {
+            const label = entry.querySelector("span:last-child");
+            return label instanceof HTMLElement ? label.textContent?.trim() || "" : "";
+          })
+          .filter(Boolean);
+
+        onlineNamePool = names;
+        onlineCountNode.textContent = String(entries.length);
+      }
+
+      async function refreshBell() {
+        if (!bellWrap) return;
+
+        try {
+          const response = await fetch("/api/session/mention-bell", {
+            headers: { "HX-Request": "true" }
+          });
+
+          if (!response.ok) return;
+          bellWrap.innerHTML = await response.text();
+        } catch {
+          // Keep current bell state if network fails.
+        }
+      }
+
+      async function loadNotifications() {
+        if (!notificationsList || notificationsLoading) return;
+        notificationsLoading = true;
+        notificationsList.innerHTML = '<li class="px-3 py-3 text-xs text-zinc-500 dark:text-zinc-400">Loading...</li>';
+
+        try {
+          const response = await fetch("/api/session/notifications", {
+            headers: { "HX-Request": "true" }
+          });
+
+          if (!response.ok) {
+            notificationsList.innerHTML = '<li class="px-3 py-3 text-xs text-rose-600 dark:text-rose-300">Could not load notifications</li>';
+            return;
+          }
+
+          notificationsList.innerHTML = await response.text();
+        } catch {
+          notificationsList.innerHTML = '<li class="px-3 py-3 text-xs text-rose-600 dark:text-rose-300">Could not load notifications</li>';
+        } finally {
+          notificationsLoading = false;
+        }
+      }
+
+      function setNotificationsOpen(next) {
+        if (!(notificationsPanel instanceof HTMLElement)) return;
+        notificationsOpen = next;
+        notificationsPanel.classList.toggle("hidden", !next);
+
+        if (next) {
+          void loadNotifications();
+        }
       }
 
       input?.addEventListener("input", () => {
@@ -323,9 +415,39 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         }, 10);
       });
 
+      bellWrap?.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const button = target.closest("#mention-bell");
+        if (!button) return;
+
+        event.preventDefault();
+        setNotificationsOpen(!notificationsOpen);
+      });
+
+      notificationsClose?.addEventListener("click", () => {
+        setNotificationsOpen(false);
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!notificationsOpen) return;
+        const target = event.target;
+        if (!(target instanceof Node)) return;
+
+        if (notificationsPanel?.contains(target) || bellWrap?.contains(target)) {
+          return;
+        }
+
+        setNotificationsOpen(false);
+      });
+
       setInterval(() => {
         fetch(`/api/presence/ping?roomId=${roomId}`, { method: "POST" }).catch(() => {});
       }, 25000);
+
+      setInterval(() => {
+        void refreshBell();
+      }, 20000);
 
       const soundApi = window.agoraSound;
       if (soundToggle && soundApi) {
@@ -341,19 +463,26 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       }
 
       syncOnlineCount();
+      scrollMessagesToBottom();
+      void refreshBell();
 
       const events = new EventSource(`/api/rooms/${roomId}/events`);
 
-      events.addEventListener("message:new", (event) => {
-        if (messageList && event instanceof MessageEvent) {
-          const emptyHint = document.getElementById("empty-room-hint");
-          if (emptyHint) emptyHint.remove();
-          messageList.insertAdjacentHTML("afterbegin", event.data);
-          if (window.agoraSound && typeof window.agoraSound.play === "function") {
-            window.agoraSound.play();
-          }
+      const appendMessage = (payload) => {
+        if (!messageList || !(payload instanceof MessageEvent)) return;
+        const emptyHint = document.getElementById("empty-room-hint");
+        if (emptyHint) emptyHint.remove();
+
+        messageList.insertAdjacentHTML("beforeend", payload.data);
+        scrollMessagesToBottom();
+
+        if (window.agoraSound && typeof window.agoraSound.play === "function") {
+          window.agoraSound.play();
         }
-      });
+      };
+
+      events.addEventListener("message:new", appendMessage);
+      events.addEventListener("system:new", appendMessage);
 
       events.addEventListener("typing:update", (event) => {
         if (typingIndicator && event instanceof MessageEvent) {
@@ -379,11 +508,9 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       });
 
       events.addEventListener("mention:notify", () => {
-        if (window.htmx) {
-          window.htmx.ajax("GET", "/api/session/mention-bell", {
-            target: "#mention-bell-wrap",
-            swap: "innerHTML"
-          });
+        void refreshBell();
+        if (notificationsOpen) {
+          void loadNotifications();
         }
       });
 
@@ -394,4 +521,5 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
     </script>
   )}
 </BaseLayout>
+
 

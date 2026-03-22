@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { LOBBY_SLUG, PRESENCE_STALE_MS } from "./constants";
 import { getDb } from "./db";
-import { mentionNotifications, messages, roomMembers, rooms, sessions } from "./schema";
+import { mentionNotifications, messages, roomMembers, rooms, sessions, users } from "./schema";
 import { parseMentions } from "./mentions";
 import { slugify } from "./utils";
 
@@ -53,6 +53,16 @@ export async function findRoomById(roomId: string) {
   return found[0] ?? null;
 }
 
+export async function findUserNicknameById(userId: string) {
+  const db = getDb();
+  const found = await db
+    .select({ nickname: users.nickname })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return found[0]?.nickname ?? null;
+}
 export async function createRoom(params: { name: string; description?: string | null; createdBy?: string | null }) {
   await ensureLobby();
   const db = getDb();
@@ -257,4 +267,24 @@ export async function markMentionsSeen(sessionId: string, roomId: string) {
         sql`${mentionNotifications.seenAt} is null`
       )
     );
+}
+
+export async function listUnreadMentionNotifications(sessionId: string, limit = 20) {
+  const db = getDb();
+  return db
+    .select({
+      id: mentionNotifications.id,
+      createdAt: mentionNotifications.createdAt,
+      roomSlug: rooms.slug,
+      roomName: rooms.name,
+      messageBody: messages.body,
+      senderName: sessions.displayName
+    })
+    .from(mentionNotifications)
+    .innerJoin(messages, eq(messages.id, mentionNotifications.messageId))
+    .innerJoin(rooms, eq(rooms.id, mentionNotifications.roomId))
+    .innerJoin(sessions, eq(sessions.id, messages.senderSessionId))
+    .where(and(eq(mentionNotifications.targetSessionId, sessionId), sql`${mentionNotifications.seenAt} is null`))
+    .orderBy(desc(mentionNotifications.createdAt))
+    .limit(limit);
 }

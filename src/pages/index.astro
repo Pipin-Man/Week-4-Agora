@@ -1,4 +1,4 @@
-﻿---
+---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import { getCurrentSession } from "../lib/session";
 
@@ -56,4 +56,33 @@ if (existing) {
       </div>
     </section>
   </main>
+
+  <script is:inline>
+    const entryForms = Array.from(document.querySelectorAll('form[action="/api/session/start"]'));
+
+    entryForms.forEach((form) => {
+      form.addEventListener(
+        "submit",
+        (event) => {
+          const currentForm = event.currentTarget;
+          if (!(currentForm instanceof HTMLFormElement)) return;
+
+          if (currentForm.dataset.submitting === "1") {
+            event.preventDefault();
+            return;
+          }
+
+          currentForm.dataset.submitting = "1";
+          const submitButtons = currentForm.querySelectorAll('button[type="submit"], button:not([type])');
+
+          submitButtons.forEach((button) => {
+            if (!(button instanceof HTMLButtonElement)) return;
+            button.disabled = true;
+            button.classList.add("cursor-not-allowed", "opacity-60");
+          });
+        },
+        { capture: true }
+      );
+    });
+  </script>
 </BaseLayout>

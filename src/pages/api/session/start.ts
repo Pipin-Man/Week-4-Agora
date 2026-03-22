@@ -1,6 +1,6 @@
-﻿import type { APIRoute } from "astro";
+import type { APIRoute } from "astro";
 import { htmxRedirect, plainRedirect, readFormText } from "../../../lib/http";
-import { createSession, setSessionCookie } from "../../../lib/session";
+import { createSession, getCurrentSession, setSessionCookie } from "../../../lib/session";
 
 export const POST: APIRoute = async (context) => {
   const form = await context.request.formData();
@@ -14,6 +14,15 @@ export const POST: APIRoute = async (context) => {
     return new Response("Nickname must be at least 2 chars", { status: 400 });
   }
 
+  const target = `/chat/${encodeURIComponent(nextRoom.toLowerCase())}`;
+  const existing = await getCurrentSession(context);
+  if (existing) {
+    if (context.request.headers.get("HX-Request") === "true") {
+      return htmxRedirect(target);
+    }
+    return plainRedirect(target);
+  }
+
   const session = await createSession({
     mode,
     nickname,
@@ -22,7 +31,6 @@ export const POST: APIRoute = async (context) => {
   });
 
   setSessionCookie(context, session.id, session.expiresAt);
-  const target = `/chat/${encodeURIComponent(nextRoom.toLowerCase())}`;
 
   if (context.request.headers.get("HX-Request") === "true") {
     return htmxRedirect(target);
