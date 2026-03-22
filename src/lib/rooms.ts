@@ -1,4 +1,4 @@
-﻿import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import { LOBBY_SLUG, PRESENCE_STALE_MS } from "./constants";
 import { getDb } from "./db";
 import { mentionNotifications, messages, roomMembers, rooms, sessions } from "./schema";
@@ -6,6 +6,8 @@ import { parseMentions } from "./mentions";
 import { slugify } from "./utils";
 
 let lobbyInit: Promise<void> | null = null;
+const ROOM_LIST_CACHE_MS = 5000;
+let roomListCache: { value: typeof rooms.$inferSelect[]; expiresAt: number } | null = null;
 
 export async function ensureLobby() {
   if (!lobbyInit) {
@@ -18,6 +20,7 @@ export async function ensureLobby() {
           name: "Lobby",
           description: "Default room"
         });
+        roomListCache = null;
       }
     })();
   }
@@ -27,8 +30,14 @@ export async function ensureLobby() {
 
 export async function listRooms() {
   await ensureLobby();
+  if (roomListCache && roomListCache.expiresAt > Date.now()) {
+    return roomListCache.value;
+  }
+
   const db = getDb();
-  return db.select().from(rooms).orderBy(rooms.createdAt);
+  const rows = await db.select().from(rooms).orderBy(rooms.createdAt);
+  roomListCache = { value: rows, expiresAt: Date.now() + ROOM_LIST_CACHE_MS };
+  return rows;
 }
 
 export async function findRoomBySlug(slug: string) {
@@ -66,6 +75,7 @@ export async function createRoom(params: { name: string; description?: string | 
     })
     .returning();
 
+  roomListCache = null;
   return created;
 }
 
