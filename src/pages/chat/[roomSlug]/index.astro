@@ -10,7 +10,6 @@ import {
   listRecentMessages,
   listRooms,
   markMentionsSeen,
-  markRoomActivity,
   unreadMentionCount
 } from "../../../lib/rooms";
 import { getCurrentSession } from "../../../lib/session";
@@ -36,7 +35,6 @@ if (!room) {
 
 if (room) {
   const wasNewJoin = await joinRoom(room.id, session.id);
-  await markRoomActivity(room.id, session.id);
   await markMentionsSeen(session.id, room.id);
 
   if (wasNewJoin) {
@@ -352,4 +350,3 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
     </script>
   )}
 </BaseLayout>
-

@@ -7,8 +7,7 @@ import {
   findRoomById,
   getRoomMember,
   joinRoom,
-  markRoomAway,
-  markRoomActivity
+  markRoomAway
 } from "../../../../lib/rooms";
 import { renderMessageOob } from "../../../../lib/render";
 import { broadcastPresence } from "../../../../lib/broadcast";
@@ -26,8 +25,7 @@ export const GET: APIRoute = async (context) => {
 
   const session = await requireSession(context);
   await joinRoom(roomId, session.id);
-  await markRoomActivity(roomId, session.id);
-  await broadcastPresence(roomId);
+  void broadcastPresence(roomId);
 
   const encoder = new TextEncoder();
   let disconnectHandler: (() => void) | null = null;
@@ -77,7 +75,7 @@ export const GET: APIRoute = async (context) => {
                   createdAt: new Date(left.createdAt)
                 })
               });
-              await broadcastPresence(roomId);
+              void broadcastPresence(roomId);
             }
           } catch {
             // Avoid crashing server process on delayed disconnect cleanup.
