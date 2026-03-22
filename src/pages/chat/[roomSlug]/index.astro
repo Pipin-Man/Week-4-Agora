@@ -33,41 +33,50 @@ if (!room) {
   Astro.response.status = 404;
 }
 
+const roomsPromise = listRooms();
+const mentionCountPromise = unreadMentionCount(session.id);
+let onlineUsers: Awaited<ReturnType<typeof listOnlineUsers>> = [];
+let messageRows: Awaited<ReturnType<typeof listRecentMessages>> = [];
+
 if (room) {
   const wasNewJoin = await joinRoom(room.id, session.id);
-  await markMentionsSeen(session.id, room.id);
+  void markMentionsSeen(session.id, room.id);
 
   if (wasNewJoin) {
-    const systemMessage = await createMessage({
-      roomId: room.id,
-      senderSessionId: session.id,
-      body: `${session.displayName} joined the room`,
-      type: "system"
-    });
+    void (async () => {
+      try {
+        const systemMessage = await createMessage({
+          roomId: room.id,
+          senderSessionId: session.id,
+          body: `${session.displayName} joined the room`,
+          type: "system"
+        });
 
-    sseHub.publish({
-      roomId: room.id,
-      event: "system:new",
-      html: `${renderMessage({
-        id: systemMessage.id,
-        type: "system",
-        body: systemMessage.body,
-        displayName: session.displayName,
-        color: session.color,
-        createdAt: new Date(systemMessage.createdAt)
-      })}`
-    });
+        sseHub.publish({
+          roomId: room.id,
+          event: "system:new",
+          html: `${renderMessage({
+            id: systemMessage.id,
+            type: "system",
+            body: systemMessage.body,
+            displayName: session.displayName,
+            color: session.color,
+            createdAt: new Date(systemMessage.createdAt)
+          })}`
+        });
+      } catch {
+        // Non-critical: do not block room navigation on join system message errors.
+      }
+    })();
   }
+
+  [onlineUsers, messageRows] = await Promise.all([
+    listOnlineUsers(room.id),
+    listRecentMessages(room.id, 30)
+  ]);
 }
 
-const [rooms, onlineUsers, mentionCount, messageRows] = room
-  ? await Promise.all([
-      listRooms(),
-      listOnlineUsers(room.id),
-      unreadMentionCount(session.id),
-      listRecentMessages(room.id, 30)
-    ])
-  : [[], [], 0, [] as Awaited<ReturnType<typeof listRecentMessages>>];
+const [rooms, mentionCount] = await Promise.all([roomsPromise, mentionCountPromise]);
 
 const orderedMessages = [...messageRows].reverse();
 const nextCursor = messageRows.length ? messageRows[messageRows.length - 1].createdAt.toISOString() : null;
@@ -350,3 +359,4 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
     </script>
   )}
 </BaseLayout>
+
