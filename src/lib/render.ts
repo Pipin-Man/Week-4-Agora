@@ -1,4 +1,4 @@
-﻿import { copy } from "./constants";
+import { copy } from "./constants";
 import { escapeHtml, formatRelativeTime } from "./utils";
 
 type MessageView = {
@@ -31,7 +31,7 @@ export function renderMessage(message: MessageView) {
 }
 
 export function renderMessageOob(message: MessageView) {
-  return `<ul id="message-list" hx-swap-oob="beforeend">${renderMessage(message)}</ul>`;
+  return renderMessage(message);
 }
 
 export function renderPresenceOob(onlineUsers: Array<{ displayName: string; color: string }>) {
@@ -42,18 +42,14 @@ export function renderPresenceOob(onlineUsers: Array<{ displayName: string; colo
     )
     .join("");
 
-  const body = userItems || `<li class="text-xs text-zinc-500 dark:text-zinc-400">No one online yet</li>`;
-
-  return `<ul id="online-list" hx-swap-oob="innerHTML">${body}</ul>`;
+  return userItems || `<li class="text-xs text-zinc-500 dark:text-zinc-400">No one online yet</li>`;
 }
 
 export function renderTypingOob(typingUsers: string[], locale: "en" | "gr" = "en") {
   const current = copy[locale];
-  const text = typingUsers.length
+  return typingUsers.length
     ? `${escapeHtml(typingUsers.slice(0, 2).join(", "))} ${current.typing}`
     : "";
-
-  return `<div id="typing-indicator" hx-swap-oob="innerHTML" class="h-5 text-xs text-zinc-500 dark:text-zinc-400">${text}</div>`;
 }
 
 export function renderBellOob(count: number) {
