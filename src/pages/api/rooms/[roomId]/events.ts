@@ -1,4 +1,4 @@
-﻿import type { APIRoute } from "astro";
+import type { APIRoute } from "astro";
 import { DISCONNECT_GRACE_MS } from "../../../../lib/constants";
 import { formatSseEvent, sseHub } from "../../../../lib/sse";
 import { requireSession } from "../../../../lib/session";
@@ -30,58 +30,90 @@ export const GET: APIRoute = async (context) => {
   await broadcastPresence(roomId);
 
   const encoder = new TextEncoder();
+  let disconnectHandler: (() => void) | null = null;
 
   const stream = new ReadableStream({
     start(controller) {
-      const push = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+      let closed = false;
+      let heartBeat: ReturnType<typeof setInterval> | null = null;
 
-      push(`retry: 3000\n\n`);
-      const unsubscribe = sseHub.subscribe(roomId, (payload) => {
-        push(formatSseEvent(payload.event, payload.html));
-      });
+      const cleanup = (unsubscribe: () => void) => {
+        if (closed) return;
+        closed = true;
 
-      const heartBeat = setInterval(() => {
-        push(":keepalive\n\n");
-      }, 15000);
+        if (heartBeat) {
+          clearInterval(heartBeat);
+          heartBeat = null;
+        }
 
-      const onAbort = () => {
-        clearInterval(heartBeat);
         unsubscribe();
+      };
 
+      const finalizePresence = () => {
         markRoomAway(roomId, session.id)
           .then(() => broadcastPresence(roomId))
           .catch(() => {});
 
         setTimeout(async () => {
-          const current = await getRoomMember(roomId, session.id);
-          if (current?.status === "away") {
-            const left = await createMessage({
-              roomId,
-              senderSessionId: session.id,
-              body: `${session.displayName} left the room`,
-              type: "system"
-            });
+          try {
+            const current = await getRoomMember(roomId, session.id);
+            if (current?.status === "away") {
+              const left = await createMessage({
+                roomId,
+                senderSessionId: session.id,
+                body: `${session.displayName} left the room`,
+                type: "system"
+              });
 
-            sseHub.publish({
-              roomId,
-              event: "system:new",
-              html: renderMessageOob({
-                id: left.id,
-                type: "system",
-                body: left.body,
-                displayName: session.displayName,
-                color: session.color,
-                createdAt: new Date(left.createdAt)
-              })
-            });
-            await broadcastPresence(roomId);
+              sseHub.publish({
+                roomId,
+                event: "system:new",
+                html: renderMessageOob({
+                  id: left.id,
+                  type: "system",
+                  body: left.body,
+                  displayName: session.displayName,
+                  color: session.color,
+                  createdAt: new Date(left.createdAt)
+                })
+              });
+              await broadcastPresence(roomId);
+            }
+          } catch {
+            // Avoid crashing server process on delayed disconnect cleanup.
           }
         }, DISCONNECT_GRACE_MS);
-
-        controller.close();
       };
 
-      context.request.signal.addEventListener("abort", onAbort, { once: true });
+      const unsubscribe = sseHub.subscribe(roomId, (payload) => {
+        push(formatSseEvent(payload.event, payload.html));
+      });
+
+      const onDisconnect = () => {
+        if (closed) return;
+        cleanup(unsubscribe);
+        finalizePresence();
+      };
+
+      const push = (chunk: string) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          onDisconnect();
+        }
+      };
+
+      disconnectHandler = onDisconnect;
+      context.request.signal.addEventListener("abort", onDisconnect, { once: true });
+
+      push(`retry: 3000\n\n`);
+      heartBeat = setInterval(() => {
+        push(":keepalive\n\n");
+      }, 15000);
+    },
+    cancel() {
+      disconnectHandler?.();
     }
   });
 

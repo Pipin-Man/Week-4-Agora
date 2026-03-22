@@ -291,14 +291,15 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         fetch(`/api/presence/ping?roomId=${roomId}`, { method: "POST" }).catch(() => {});
       }, 25000);
 
-      if (soundToggle) {
+      const soundApi = window.agoraSound;
+      if (soundToggle && soundApi) {
         const paintSound = () => {
-          soundToggle.textContent = `Sound: ${window.agoraSound && window.agoraSound.enabled ? "On" : "Off"}`;
+          soundToggle.textContent = `Sound: ${soundApi.enabled ? "On" : "Off"}`;
         };
 
         paintSound();
         soundToggle.addEventListener("click", () => {
-          window.agoraSound.set(!window.agoraSound.enabled);
+          soundApi.set(!soundApi.enabled);
           paintSound();
         });
       }
@@ -351,3 +352,4 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
     </script>
   )}
 </BaseLayout>
+
