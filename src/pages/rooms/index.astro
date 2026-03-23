@@ -19,7 +19,7 @@ const rooms = await listRoomsWithOnlineCounts();
           <div>
             <p class="text-xs font-semibold uppercase tracking-wide text-sky-600">Agora</p>
             <h1 class="mt-1 text-xl font-bold">Rooms</h1>
-            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Pick a room to open live chat. Viber/Discord style flow.</p>
+            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-200">Pick a room to open live chat. Viber/Discord style flow.</p>
           </div>
 
           <div class="flex items-center gap-2">
@@ -56,20 +56,20 @@ const rooms = await listRoomsWithOnlineCounts();
       <section class="mt-4 rounded-2xl border border-zinc-300 bg-white/88 p-3 dark:border-zinc-700 dark:bg-zinc-900/88">
         <ul class="space-y-2">
           {rooms.map((room) => (
-            <li class="rounded-xl border border-zinc-200/80 bg-zinc-50/70 dark:border-zinc-800/80 dark:bg-zinc-900/70">
+            <li class="rounded-xl border border-zinc-200/80 bg-zinc-50/70 dark:border-zinc-700/80 dark:bg-zinc-900/70">
               <div class="flex items-start gap-2 p-2">
                 <a href={`/chat/${room.slug}`} class="flex-1 rounded-lg px-3 py-2 hover:bg-white dark:hover:bg-zinc-800/70">
                   <div class="flex items-center gap-2">
                     <p class="text-sm font-semibold">{room.name}</p>
                     {room.slug === LOBBY_SLUG && <span class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-200">Default</span>}
                   </div>
-                  <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{room.description || "No description"}</p>
-                  <p class="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">{room.onlineCount} in the room</p>
+                  <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-200">{room.description || "No description"}</p>
+                  <p class="mt-1 text-[11px] text-zinc-500 dark:text-zinc-200">{room.onlineCount} in the room</p>
                 </a>
 
                 {room.slug !== LOBBY_SLUG && (
                   <form method="post" action={`/api/rooms/${room.id}/delete`} class="room-delete-form">
-                    <button type="submit" class="rounded-lg border border-zinc-300 p-2 text-zinc-500 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-300 dark:hover:text-rose-300" title="Delete room" aria-label="Delete room">
+                    <button type="submit" class="rounded-lg border border-zinc-300 p-2 text-zinc-500 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-200 dark:hover:text-rose-300" title="Delete room" aria-label="Delete room">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4h8v2m-9 0l1 14h6l1-14M10 10v7M14 10v7" />
                       </svg>

@@ -13,7 +13,7 @@ type MessageView = {
 function highlightMentions(safeText: string) {
   return safeText.replace(
     /@([a-zA-Z0-9_]{2,40})/g,
-    '<span class="font-semibold text-zinc-700 dark:text-zinc-300">@$1</span>'
+    '<span class="font-semibold text-zinc-700 dark:text-zinc-100">@$1</span>'
   );
 }
 
@@ -22,7 +22,7 @@ export function renderMessage(message: MessageView) {
   const richBody = highlightMentions(safeBody);
 
   if (message.type === "system") {
-    return `<li id="msg-${message.id}" class="my-2 text-center text-xs text-zinc-500 dark:text-zinc-400">${safeBody}</li>`;
+    return `<li id="msg-${message.id}" class="my-2 text-center text-xs text-zinc-500 dark:text-zinc-200">${safeBody}</li>`;
   }
 
   return `<li id="msg-${message.id}" class="py-2">
@@ -31,7 +31,7 @@ export function renderMessage(message: MessageView) {
     <div class="min-w-0">
       <div class="flex items-center gap-2 text-xs">
         <span class="font-semibold text-zinc-900 dark:text-zinc-100">${escapeHtml(message.displayName)}</span>
-        <time class="text-zinc-500 dark:text-zinc-400">${formatRelativeTime(new Date(message.createdAt))}</time>
+        <time class="text-zinc-500 dark:text-zinc-200">${formatRelativeTime(new Date(message.createdAt))}</time>
       </div>
       <p class="whitespace-pre-wrap break-words text-sm text-zinc-800 dark:text-zinc-200">${richBody}</p>
     </div>
@@ -51,7 +51,7 @@ export function renderPresenceOob(onlineUsers: Array<{ displayName: string; colo
     )
     .join("");
 
-  return userItems || `<li data-empty="1" class="text-xs text-zinc-500 dark:text-zinc-400">No one online yet</li>`;
+  return userItems || `<li data-empty="1" class="text-xs text-zinc-500 dark:text-zinc-200">No one online yet</li>`;
 }
 
 export function renderTypingOob(typingUsers: string[], locale: "en" | "gr" = "en") {
