@@ -56,10 +56,22 @@ export async function listRoomsWithOnlineCounts() {
 
   const byRoom = new Map(counts.map((row) => [row.roomId, Number(row.count)]));
 
-  return rows.map((room) => ({
+  const withCounts = rows.map((room) => ({
     ...room,
     onlineCount: byRoom.get(room.id) ?? 0
   }));
+
+  const lobby = withCounts.find((room) => room.slug === LOBBY_SLUG) ?? null;
+  const rest = withCounts
+    .filter((room) => room.slug !== LOBBY_SLUG)
+    .sort((a, b) => {
+      if (b.onlineCount !== a.onlineCount) {
+        return b.onlineCount - a.onlineCount;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+  return lobby ? [lobby, ...rest] : rest;
 }
 
 export async function findRoomBySlug(slug: string) {
