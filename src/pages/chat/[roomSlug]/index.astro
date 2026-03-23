@@ -1,13 +1,13 @@
 ---
 import BaseLayout from "../../../layouts/BaseLayout.astro";
-import { copy, LOBBY_SLUG } from "../../../lib/constants";
+import { copy } from "../../../lib/constants";
+import { getPublicOrigin } from "../../../lib/http";
 import { renderMessage, renderPresenceFlash } from "../../../lib/render";
 import {
   findRoomBySlug,
   joinRoom,
   listOnlineUsers,
   listRecentMessages,
-  listRoomsWithOnlineCounts,
   markMentionsSeen,
   unreadMentionCount
 } from "../../../lib/rooms";
@@ -24,7 +24,7 @@ if (!session) {
 
 const roomSlug = Astro.params.roomSlug;
 if (!roomSlug) {
-  return Astro.redirect("/chat/lobby");
+  return Astro.redirect("/rooms");
 }
 
 const room = await findRoomBySlug(roomSlug);
@@ -32,11 +32,9 @@ if (!room) {
   Astro.response.status = 404;
 }
 
-const roomsPromise = listRoomsWithOnlineCounts();
-const mentionCountPromise = unreadMentionCount(session.id);
-
 let onlineUsers: Awaited<ReturnType<typeof listOnlineUsers>> = [];
 let messageRows: Awaited<ReturnType<typeof listRecentMessages>> = [];
+let mentionCount = 0;
 
 if (room) {
   const wasNewJoin = await joinRoom(room.id, session.id);
@@ -50,141 +48,109 @@ if (room) {
     });
   }
 
-  [onlineUsers, messageRows] = await Promise.all([
+  [onlineUsers, messageRows, mentionCount] = await Promise.all([
     listOnlineUsers(room.id),
-    listRecentMessages(room.id, 40)
+    listRecentMessages(room.id, 40),
+    unreadMentionCount(session.id)
   ]);
 }
 
-const [rooms, mentionCount] = await Promise.all([roomsPromise, mentionCountPromise]);
 const orderedMessages = [...messageRows].reverse();
-const inviteLink = room ? `${Astro.url.origin}/join/${room.slug}` : "";
+const configuredOrigin = (import.meta.env.PUBLIC_APP_URL || "").trim();
+const requestOrigin = getPublicOrigin(Astro.request, Astro.url.origin);
+const publicOrigin = (configuredOrigin || requestOrigin || Astro.url.origin).replace(/\/$/, "");
+const inviteLink = room ? `${publicOrigin}/join/${room.slug}` : "";
 const onlineNames = onlineUsers.map((user) => user.displayName);
 ---
 <BaseLayout title={`Agora | ${room?.name ?? "Not Found"}`}>
   {room ? (
-    <div x-data="{ inviteOpen: false, roomOpen: false, roomsDropdownOpen: false }" x-on:close-mobile-rooms.window="roomsDropdownOpen = false" class="h-screen">
-      <main class="mx-auto flex h-screen w-full max-w-7xl flex-col gap-3 p-3 pb-48 md:p-4 md:pb-36">
-        <header class="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white/70 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70">
-          <div>
-            <h1 class="text-lg font-semibold">Agora</h1>
-            <p class="text-xs text-zinc-500 dark:text-zinc-400">Room #{room.name}</p>
-          </div>
+    <div x-data="{ inviteOpen: false }" class="h-screen">
+      <main class="mx-auto flex h-screen w-full max-w-6xl flex-col gap-3 p-3 pb-44 md:p-4 md:pb-32">
+        <header class="rounded-2xl border border-zinc-200 bg-white/70 px-3 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/70 md:px-4">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <a href="/rooms" class="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800">Back to Rooms</a>
+                <button type="button" class="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="inviteOpen = true" title="Invite to room" aria-label="Invite to room">Invite to room</button>
+              </div>
 
-          <button id="sound-toggle" type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700">Sound: On</button>
+              <h1 class="mt-2 truncate text-lg font-semibold">#{room.name}</h1>
+              <p class="truncate text-xs text-zinc-500 dark:text-zinc-400">{room.description || "No description"}</p>
+              <div class="mt-1 flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                <span><span id="room-members-count">{onlineUsers.length}</span> in the room</span>
+                <button id="mobile-members-toggle" type="button" class="rounded border border-zinc-300 px-2 py-0.5 text-[11px] text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800 md:hidden">Members</button>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <div class="relative">
+                <div id="mention-bell-wrap">
+                  <button id="mention-bell" type="button" aria-label="Notifications" class="relative inline-flex size-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17H18l-1.405-1.405A2.03 2.03 0 0 1 16 14.158V11a6.002 6.002 0 0 0-4-5.659V4a2 2 0 1 0-4 0v1.341C5.67 6.165 4 8.388 4 11v3.159c0 .538-.214 1.055-.595 1.436L2 17h3.143M9 17a3 3 0 0 0 6 0" />
+                    </svg>
+                    {mentionCount > 0 && <span class="absolute -right-1 -top-1 min-w-4 rounded-full bg-red-500 px-1 text-center text-[10px] leading-4 text-white">{mentionCount}</span>}
+                  </button>
+                </div>
+
+                <div id="notifications-panel" class="absolute right-0 top-10 z-50 hidden w-[min(92vw,28rem)] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl max-sm:right-[-0.25rem] max-sm:w-[calc(100vw-1.25rem)] dark:border-zinc-800 dark:bg-zinc-900">
+                  <div class="flex h-11 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
+                    <h3 class="text-sm font-semibold">Notifications</h3>
+                    <button id="notifications-close" type="button" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">Close</button>
+                  </div>
+                  <ul id="notifications-list" class="max-h-80 overflow-y-auto max-sm:max-h-[60vh]">
+                    <li class="px-3 py-3 text-xs text-zinc-500 dark:text-zinc-400">No unread notifications</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="relative">
+                <button id="user-menu-toggle" type="button" class="inline-flex items-center gap-2 rounded-lg border border-zinc-300 px-2 py-1 text-sm font-semibold text-zinc-800 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800">
+                  <span class="max-w-28 truncate">{session.displayName}</span>
+                  <svg viewBox="0 0 20 20" fill="currentColor" class="size-3 opacity-70"><path d="M5.5 7.5 10 12l4.5-4.5" /></svg>
+                </button>
+                <div id="user-menu" class="absolute right-0 top-10 z-50 hidden w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+                  <a href="/settings/profile" class="block rounded-lg px-3 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">Change nickname</a>
+                  <form method="post" action="/api/session/logout">
+                    <button type="submit" class="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30">Log out</button>
+                  </form>
+                </div>
+              </div>
+
+              <div class="relative">
+                <button id="app-menu-toggle" type="button" aria-label="App settings" class="inline-flex size-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm7-3.5a7.7 7.7 0 0 0-.11-1.3l2.01-1.57-2-3.46-2.42.79a7.7 7.7 0 0 0-2.24-1.3L13.9 2h-3.8l-.34 2.46a7.7 7.7 0 0 0-2.24 1.3l-2.42-.79-2 3.46 2.01 1.57A7.7 7.7 0 0 0 5 12c0 .44.04.87.11 1.3L3.1 14.87l2 3.46 2.42-.79c.68.54 1.44.98 2.24 1.3L10.1 22h3.8l.34-2.46c.8-.32 1.56-.76 2.24-1.3l2.42.79 2-3.46-2.01-1.57c.07-.43.11-.86.11-1.3Z" />
+                  </svg>
+                </button>
+                <div id="app-menu" class="absolute right-0 top-10 z-50 hidden w-48 rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+                  <button id="theme-toggle-menu" type="button" class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">Theme: Light</button>
+                  <button id="sound-toggle-menu" type="button" class="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">Sound: On</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </header>
 
-        <section id="chat-layout-grid" class="grid min-h-0 flex-1 gap-3" style="grid-template-columns:minmax(0,1fr) minmax(0,2.6fr) minmax(0,1fr);">
-          <aside id="rooms-sidebar" class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75">
-            <div class="flex h-14 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
-              <h2 class="text-lg font-semibold">Rooms</h2>
-              <button type="button" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" @click="roomOpen = true">Add Room</button>
-            </div>
-            <div class="min-h-0 flex-1 overflow-y-auto p-3">
-              <ul class="divide-y divide-zinc-200 dark:divide-zinc-800">
-                {rooms.map((item) => (
-                  <li class="py-2">
-                    <div class="flex items-start gap-2">
-                      <a
-                        href={`/chat/${item.slug}`}
-                        class:list={[
-                          "flex-1 rounded-lg px-2 py-2",
-                          item.id === room.id
-                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                            : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                        ]}
-                      >
-                        <p class="text-sm font-semibold">{item.name}</p>
-                        <p class="mt-0.5 text-xs opacity-80">{item.description || "No description"}</p>
-                        <p data-room-count-for={item.id} class="mt-1 text-[11px] opacity-75">{item.onlineCount} in the room</p>
-                      </a>
+        <div id="mobile-members-panel" class="hidden rounded-2xl border border-zinc-200 bg-white/75 p-3 dark:border-zinc-800 dark:bg-zinc-900/75 md:hidden">
+          <h2 class="text-sm font-semibold">{currentCopy.online}</h2>
+          <ul id="mobile-online-list" class="mt-2 space-y-2">
+            {onlineUsers.length > 0 ? (
+              onlineUsers.map((user) => (
+                <li data-online="1" data-user-name={user.displayName} class="flex items-center gap-2 text-sm">
+                  <span class="size-2 rounded-full" style={`background:${user.color}`}></span>
+                  <button type="button" data-mention-name={user.displayName} class="truncate text-left hover:underline">{user.displayName}</button>
+                </li>
+              ))
+            ) : (
+              <li data-empty="1" class="text-xs text-zinc-500 dark:text-zinc-400">No one online yet</li>
+            )}
+          </ul>
+        </div>
 
-                      {item.id === room.id && item.slug !== LOBBY_SLUG && (
-                        <form method="post" action={`/api/rooms/${item.id}/delete`} class="room-delete-form">
-                          <button type="submit" class="rounded-lg border border-zinc-300 p-2 text-zinc-500 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-300 dark:hover:text-rose-300" title="Delete room" aria-label="Delete room">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4h8v2m-9 0l1 14h6l1-14M10 10v7M14 10v7" />
-                            </svg>
-                          </button>
-                        </form>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </aside>
-
-          <section id="rooms-mobile-block" class="hidden flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80">
-            <div class="flex h-14 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
-              <h2 class="text-lg font-semibold">Rooms</h2>
-              <div class="flex items-center gap-3">
-                <button type="button" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100" @click="roomOpen = true">Add Room</button>
-                <button id="rooms-dropdown-toggle" type="button" class="text-xs font-semibold text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100" @click="roomsDropdownOpen = !roomsDropdownOpen" x-text="roomsDropdownOpen ? 'Hide' : 'Show'"></button>
-              </div>
-            </div>
-            <div x-show="roomsDropdownOpen" x-cloak @click.outside="roomsDropdownOpen = false" class="max-h-[45vh] overflow-y-auto p-3">
-              <ul class="divide-y divide-zinc-200 dark:divide-zinc-800">
-                {rooms.map((item) => (
-                  <li class="py-2">
-                    <div class="flex items-start gap-2">
-                      <a
-                        href={`/chat/${item.slug}`}
-                        class:list={[
-                          "flex-1 rounded-lg px-2 py-2",
-                          item.id === room.id
-                            ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                            : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                        ]}
-                        @click="roomsDropdownOpen = false"
-                      >
-                        <p class="text-sm font-semibold">{item.name}</p>
-                        <p class="mt-0.5 text-xs opacity-80">{item.description || "No description"}</p>
-                        <p data-room-count-for={item.id} class="mt-1 text-[11px] opacity-75">{item.onlineCount} in the room</p>
-                      </a>
-
-                      {item.id === room.id && item.slug !== LOBBY_SLUG && (
-                        <form method="post" action={`/api/rooms/${item.id}/delete`} class="room-delete-form">
-                          <button type="submit" class="rounded-lg border border-zinc-300 p-2 text-zinc-500 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-300 dark:hover:text-rose-300" title="Delete room" aria-label="Delete room">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4h8v2m-9 0l1 14h6l1-14M10 10v7M14 10v7" />
-                            </svg>
-                          </button>
-                        </form>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
-
-          <section id="messages-panel" class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80">
-            <div class="border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
-              <div class="flex items-center justify-between gap-3">
-                <div class="min-w-0">
-                  <h2 class="truncate text-lg font-semibold">#{room.name}</h2>
-                  <p class="truncate text-xs text-zinc-500 dark:text-zinc-400">{room.description || "No description"}</p>
-                </div>
-
-                <div class="flex items-center gap-2">
-                  <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200" @click="inviteOpen = true" title="Invite friend" aria-label="Invite friend">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14M5 12h14" />
-                    </svg>
-                  </button>
-
-                  <button id="members-toggle" type="button" class="inline-flex items-center gap-2 rounded-lg border border-zinc-300 px-2 py-1 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-200" title="Hide members panel" aria-label="Toggle members panel" aria-pressed="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm10 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                    <span id="members-count-label">{onlineUsers.length} in the room</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-
+        <section class="grid min-h-0 flex-1 gap-3 md:[grid-template-columns:minmax(0,1fr)_clamp(190px,28vw,260px)]">
+          <section class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/80 dark:border-zinc-800 dark:bg-zinc-900/80">
+            <div id="presence-flash" class="px-3 pt-3"></div>
             <div id="message-scroll" class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               <ul id="message-list" hx-swap="beforeend" class="space-y-1">
                 {orderedMessages.length === 0 && (
@@ -204,23 +170,21 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
                 ))}
               </ul>
             </div>
-
             <div id="typing-indicator" class="h-8 border-t border-zinc-200 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"></div>
           </section>
 
-          <aside id="online-sidebar" class="flex min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75">
-            <div class="flex h-14 items-center justify-between border-b border-zinc-200 px-4 dark:border-zinc-800">
-              <h2 class="text-lg font-semibold">{currentCopy.online}</h2>
+          <aside id="online-sidebar" class="hidden min-h-0 flex-col rounded-2xl border border-zinc-200 bg-white/75 dark:border-zinc-800 dark:bg-zinc-900/75 md:flex">
+            <div class="flex h-12 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
+              <h2 class="text-sm font-semibold">{currentCopy.online}</h2>
               <span id="online-count" class="text-xs text-zinc-500 dark:text-zinc-400">{onlineUsers.length}</span>
             </div>
-            <div id="presence-flash" class="px-3 pt-2"></div>
-            <div class="min-h-0 flex-1 overflow-y-auto p-3 pt-2">
+            <div class="min-h-0 flex-1 overflow-y-auto p-3">
               <ul id="online-list" class="space-y-2">
                 {onlineUsers.length > 0 ? (
                   onlineUsers.map((user) => (
-                    <li data-online="1" class="flex items-center gap-2 text-sm">
+                    <li data-online="1" data-user-name={user.displayName} class="flex items-center gap-2 text-sm">
                       <span class="size-2 rounded-full" style={`background:${user.color}`}></span>
-                      <span>{user.displayName}</span>
+                      <button type="button" data-mention-name={user.displayName} class="truncate text-left hover:underline">{user.displayName}</button>
                     </li>
                   ))
                 ) : (
@@ -233,44 +197,7 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       </main>
 
       <footer class="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95">
-        <div class="mx-auto grid w-full max-w-7xl gap-3 px-3 py-3 md:grid-cols-[33%_1fr] md:px-4">
-          <section class="relative rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
-            <div class="flex items-start justify-between gap-2">
-              <div>
-                <p class="text-[11px] text-zinc-500 dark:text-zinc-400">Connected as</p>
-                <p class="text-sm font-bold">{session.displayName}</p>
-              </div>
-
-              <div class="relative">
-                <div id="mention-bell-wrap">
-                  <button id="mention-bell" type="button" aria-label="Notifications" class="relative inline-flex size-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17H18l-1.405-1.405A2.03 2.03 0 0 1 16 14.158V11a6.002 6.002 0 0 0-4-5.659V4a2 2 0 1 0-4 0v1.341C5.67 6.165 4 8.388 4 11v3.159c0 .538-.214 1.055-.595 1.436L2 17h3.143M9 17a3 3 0 0 0 6 0" />
-                    </svg>
-                    {mentionCount > 0 && <span class="absolute -right-1 -top-1 min-w-4 rounded-full bg-red-500 px-1 text-center text-[10px] leading-4 text-white">{mentionCount}</span>}
-                  </button>
-                </div>
-
-                <div id="notifications-panel" class="absolute bottom-10 right-0 z-50 hidden w-[min(92vw,28rem)] overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl max-sm:bottom-11 max-sm:right-[-0.25rem] max-sm:w-[calc(100vw-1.25rem)] dark:border-zinc-800 dark:bg-zinc-900">
-                  <div class="flex h-11 items-center justify-between border-b border-zinc-200 px-3 dark:border-zinc-800">
-                    <h3 class="text-sm font-semibold">Notifications</h3>
-                    <button id="notifications-close" type="button" class="text-xs text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">Close</button>
-                  </div>
-                  <ul id="notifications-list" class="max-h-80 overflow-y-auto max-sm:max-h-[60vh]">
-                    <li class="px-3 py-3 text-xs text-zinc-500 dark:text-zinc-400">No unread notifications</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            <div class="mt-2 flex flex-wrap items-center gap-3 text-xs">
-              <a href="/settings/profile" class="text-sky-700 hover:underline dark:text-sky-300">Change name</a>
-              <form method="post" action="/api/session/logout">
-                <button class="text-rose-600 hover:underline dark:text-rose-300">Logout</button>
-              </form>
-            </div>
-          </section>
-
+        <div class="mx-auto w-full max-w-6xl px-3 py-3 md:px-4">
           <section class="rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
             <form id="composer" method="post" action={`/api/rooms/${room.id}/messages`} hx-post={`/api/rooms/${room.id}/messages`} hx-swap="none">
               <textarea id="message-input" name="body" required minlength="1" maxlength="1200" rows="2" placeholder="Write a message..." class="w-full rounded-xl border border-zinc-300 px-3 py-2 text-base md:text-sm dark:border-zinc-700 dark:bg-zinc-950"></textarea>
@@ -295,27 +222,13 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
           </div>
         </div>
       </div>
-
-      <div x-show="roomOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="roomOpen = false">
-        <div class="w-full max-w-md rounded-2xl bg-white p-4 dark:bg-zinc-900">
-          <h3 class="text-lg font-semibold">Add room</h3>
-          <form method="post" action="/api/rooms" class="mt-3 space-y-2">
-            <input name="name" required minlength="2" maxlength="80" placeholder="Room name" class="w-full rounded-md border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
-            <input name="description" maxlength="120" placeholder="Description (optional)" class="w-full rounded-md border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
-            <div class="mt-3 flex justify-end gap-2">
-              <button type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700" @click="roomOpen = false">Cancel</button>
-              <button class="rounded-lg bg-zinc-900 px-3 py-1 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">Create</button>
-            </div>
-          </form>
-        </div>
-      </div>
     </div>
   ) : (
     <main class="mx-auto flex min-h-screen w-full max-w-xl items-center justify-center p-4">
       <section class="w-full rounded-2xl border border-zinc-200 bg-white/80 p-6 text-center dark:border-zinc-800 dark:bg-zinc-900/80">
         <h1 class="text-xl font-semibold">Room not found</h1>
         <p class="mt-2 text-sm text-zinc-500">This room does not exist or the invite is invalid.</p>
-        <a href="/chat/lobby" class="mt-4 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">Go to Lobby</a>
+        <a href="/rooms" class="mt-4 inline-block rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">Go to Rooms</a>
       </section>
     </main>
   )}
@@ -325,34 +238,35 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       const form = document.getElementById("composer");
       const input = document.getElementById("message-input");
       const suggestionBox = document.getElementById("mention-suggestions");
-      const soundToggle = document.getElementById("sound-toggle");
       const messageList = document.getElementById("message-list");
       const messageScroll = document.getElementById("message-scroll");
       const typingIndicator = document.getElementById("typing-indicator");
       const onlineList = document.getElementById("online-list");
+      const mobileOnlineList = document.getElementById("mobile-online-list");
       const onlineCountNode = document.getElementById("online-count");
+      const roomMembersCountNode = document.getElementById("room-members-count");
       const presenceFlash = document.getElementById("presence-flash");
+
       const bellWrap = document.getElementById("mention-bell-wrap");
       const notificationsPanel = document.getElementById("notifications-panel");
       const notificationsList = document.getElementById("notifications-list");
       const notificationsClose = document.getElementById("notifications-close");
-      const roomsDropdownToggle = document.getElementById("rooms-dropdown-toggle");
-      const membersToggle = document.getElementById("members-toggle");
-      const membersCountLabel = document.getElementById("members-count-label");
-      const layoutGrid = document.getElementById("chat-layout-grid");
-      const roomsSidebar = document.getElementById("rooms-sidebar");
-      const roomsMobileBlock = document.getElementById("rooms-mobile-block");
-      const messagesPanel = document.getElementById("messages-panel");
-      const onlineSidebar = document.getElementById("online-sidebar");
-      const deleteForms = document.querySelectorAll(".room-delete-form");
+
+      const userMenuToggle = document.getElementById("user-menu-toggle");
+      const userMenu = document.getElementById("user-menu");
+      const appMenuToggle = document.getElementById("app-menu-toggle");
+      const appMenu = document.getElementById("app-menu");
+      const themeToggleMenu = document.getElementById("theme-toggle-menu");
+      const soundToggleMenu = document.getElementById("sound-toggle-menu");
+
+      const mobileMembersToggle = document.getElementById("mobile-members-toggle");
+      const mobileMembersPanel = document.getElementById("mobile-members-panel");
 
       let typingTimer;
       let presenceFlashTimer;
       let notificationsOpen = false;
       let notificationsLoading = false;
       let onlineNamePool = Array.isArray(onlineNames) ? [...onlineNames] : [];
-      let onlineManualHidden = false;
-      let onlineAutoHidden = false;
 
       function postTyping(typing) {
         fetch(`/api/rooms/${roomId}/typing`, {
@@ -367,121 +281,17 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         messageScroll.scrollTop = messageScroll.scrollHeight;
       }
 
-      function updateRoomCountLabels(count) {
-        document
-          .querySelectorAll(`[data-room-count-for="${roomId}"]`)
-          .forEach((node) => {
-            if (node instanceof HTMLElement) {
-              node.textContent = `${count} in the room`;
-            }
-          });
-
-        if (membersCountLabel instanceof HTMLElement) {
-          membersCountLabel.textContent = `${count} in the room`;
-        }
-      }
-
-      function updateMembersToggleVisual() {
-        if (!(membersToggle instanceof HTMLButtonElement)) return;
-
-        const roomsDropdownMode = roomsMobileBlock instanceof HTMLElement && !roomsMobileBlock.classList.contains("hidden");
-        const disabled = roomsDropdownMode || onlineAutoHidden;
-        const onlineVisible = onlineSidebar instanceof HTMLElement && !onlineSidebar.classList.contains("hidden");
-
-        membersToggle.disabled = disabled;
-        membersToggle.classList.toggle("opacity-50", disabled);
-        membersToggle.classList.toggle("cursor-not-allowed", disabled);
-        membersToggle.setAttribute("aria-pressed", onlineVisible ? "true" : "false");
-
-        if (disabled) {
-          membersToggle.title = "Members panel is unavailable in this layout";
-        } else {
-          membersToggle.title = onlineVisible ? "Hide members panel" : "Show members panel";
-        }
-      }
-
-      function applyResponsiveLayout() {
-        if (!(layoutGrid instanceof HTMLElement) || !(roomsSidebar instanceof HTMLElement) || !(onlineSidebar instanceof HTMLElement) || !(messagesPanel instanceof HTMLElement) || !(roomsMobileBlock instanceof HTMLElement)) {
-          return;
-        }
-
-        roomsSidebar.classList.remove("hidden");
-        onlineSidebar.classList.remove("hidden");
-        roomsMobileBlock.classList.add("hidden");
-        roomsMobileBlock.classList.remove("flex");
-        layoutGrid.style.gridTemplateColumns = "minmax(0,1fr) minmax(0,2.6fr) minmax(0,1fr)";
-
-        const onlineWidth = onlineSidebar.getBoundingClientRect().width;
-        onlineAutoHidden = onlineWidth < 180;
-
-        if (onlineAutoHidden || onlineManualHidden) {
-          onlineSidebar.classList.add("hidden");
-          layoutGrid.style.gridTemplateColumns = "minmax(0,1fr) minmax(0,2.6fr)";
-        }
-
-        const roomsWidth = roomsSidebar.getBoundingClientRect().width;
-        const messagesWidth = messagesPanel.getBoundingClientRect().width;
-        const useRoomsDropdown = roomsWidth < 180 || messagesWidth < 450;
-
-        if (useRoomsDropdown) {
-          roomsSidebar.classList.add("hidden");
-          onlineSidebar.classList.add("hidden");
-          roomsMobileBlock.classList.remove("hidden");
-          roomsMobileBlock.classList.add("flex");
-          layoutGrid.style.gridTemplateColumns = "minmax(0,1fr)";
-        }
-
-        updateMembersToggleVisual();
-      }
-
-      function insertMention(name) {
-        if (!(input instanceof HTMLTextAreaElement)) return;
-        const cursor = input.selectionStart || input.value.length;
-        const head = input.value.slice(0, cursor);
-        const tail = input.value.slice(cursor);
-        const replaced = head.replace(/@([a-zA-Z0-9_]*)$/, `@${name} `);
-        input.value = `${replaced}${tail}`;
-        input.focus();
-        suggestionBox?.classList.add("hidden");
-      }
-
-      function updateMentionSuggestions() {
-        if (!(input instanceof HTMLTextAreaElement) || !suggestionBox) return;
-        const cursor = input.selectionStart || input.value.length;
-        const head = input.value.slice(0, cursor);
-        const match = head.match(/(^|\s)@([a-zA-Z0-9_]*)$/);
-
-        if (!match) {
-          suggestionBox.classList.add("hidden");
-          suggestionBox.innerHTML = "";
-          return;
-        }
-
-        const query = match[2].toLowerCase();
-        const base = ["everyone", ...onlineNamePool.filter((name) => name.toLowerCase() !== sessionName.toLowerCase())];
-        const candidates = base.filter((name) => name.toLowerCase().startsWith(query)).slice(0, 6);
-
-        if (!candidates.length) {
-          suggestionBox.classList.add("hidden");
-          suggestionBox.innerHTML = "";
-          return;
-        }
-
-        suggestionBox.innerHTML = candidates
-          .map(
-            (name) =>
-              `<button type="button" data-name="${name}" class="mr-1 mb-1 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">@${name}</button>`
-          )
-          .join("");
-        suggestionBox.classList.remove("hidden");
-      }
-
       function syncOnlineCount() {
-        if (!onlineList) return;
-        const entries = Array.from(onlineList.querySelectorAll('li[data-online="1"]'));
+        const source = onlineList instanceof HTMLElement ? onlineList : mobileOnlineList;
+        if (!(source instanceof HTMLElement)) return;
+
+        const entries = Array.from(source.querySelectorAll('li[data-online="1"]'));
         const names = entries
           .map((entry) => {
-            const label = entry.querySelector("span:last-child");
+            if (!(entry instanceof HTMLElement)) return "";
+            const attrName = entry.dataset.userName?.trim() || "";
+            if (attrName) return attrName;
+            const label = entry.querySelector('[data-mention-name], span:last-child');
             return label instanceof HTMLElement ? label.textContent?.trim() || "" : "";
           })
           .filter(Boolean);
@@ -492,11 +302,18 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
           onlineCountNode.textContent = String(entries.length);
         }
 
-        updateRoomCountLabels(entries.length);
+        if (roomMembersCountNode instanceof HTMLElement) {
+          roomMembersCountNode.textContent = String(entries.length);
+        }
+      }
+
+      function closeMenus() {
+        userMenu?.classList.add("hidden");
+        appMenu?.classList.add("hidden");
       }
 
       async function refreshBell() {
-        if (!bellWrap) return;
+        if (!(bellWrap instanceof HTMLElement)) return;
 
         try {
           const response = await fetch("/api/session/mention-bell", {
@@ -511,7 +328,7 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
       }
 
       async function loadNotifications() {
-        if (!notificationsList || notificationsLoading) return;
+        if (!(notificationsList instanceof HTMLElement) || notificationsLoading) return;
         notificationsLoading = true;
         notificationsList.innerHTML = '<li class="px-3 py-3 text-xs text-zinc-500 dark:text-zinc-400">Loading...</li>';
 
@@ -539,9 +356,63 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         notificationsPanel.classList.toggle("hidden", !next);
 
         if (next) {
-          window.dispatchEvent(new CustomEvent("close-mobile-rooms"));
+          closeMenus();
           void loadNotifications();
         }
+      }
+
+      function insertMention(name) {
+        if (!(input instanceof HTMLTextAreaElement)) return;
+        const cursor = input.selectionStart || input.value.length;
+        const head = input.value.slice(0, cursor);
+        const tail = input.value.slice(cursor);
+        const replaced = head.replace(/@([a-zA-Z0-9_]*)$/, `@${name} `);
+        input.value = `${replaced}${tail}`;
+        input.focus();
+        suggestionBox?.classList.add("hidden");
+      }
+
+      function bindMentionFromList(root) {
+        if (!(root instanceof HTMLElement)) return;
+
+        root.addEventListener("click", (event) => {
+          const target = event.target;
+          if (!(target instanceof Element)) return;
+          const mentionNode = target.closest("[data-mention-name]");
+          if (!(mentionNode instanceof HTMLElement)) return;
+          const name = mentionNode.dataset.mentionName;
+          if (!name) return;
+          event.preventDefault();
+          insertMention(name);
+        });
+      }
+
+      function updateMentionSuggestions() {
+        if (!(input instanceof HTMLTextAreaElement) || !(suggestionBox instanceof HTMLElement)) return;
+        const cursor = input.selectionStart || input.value.length;
+        const head = input.value.slice(0, cursor);
+        const match = head.match(/(^|\s)@([a-zA-Z0-9_]*)$/);
+
+        if (!match) {
+          suggestionBox.classList.add("hidden");
+          suggestionBox.innerHTML = "";
+          return;
+        }
+
+        const query = match[2].toLowerCase();
+        const base = ["everyone", ...onlineNamePool.filter((name) => name.toLowerCase() !== sessionName.toLowerCase())];
+        const candidates = base.filter((name) => name.toLowerCase().startsWith(query)).slice(0, 6);
+
+        if (!candidates.length) {
+          suggestionBox.classList.add("hidden");
+          suggestionBox.innerHTML = "";
+          return;
+        }
+
+        suggestionBox.innerHTML = candidates
+          .map((name) => `<button type="button" data-name="${name}" class="mr-1 mb-1 rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">@${name}</button>`)
+          .join("");
+        suggestionBox.classList.remove("hidden");
       }
 
       input?.addEventListener("input", () => {
@@ -550,6 +421,9 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         clearTimeout(typingTimer);
         typingTimer = setTimeout(() => postTyping(false), 1200);
       });
+
+      bindMentionFromList(onlineList);
+      bindMentionFromList(mobileOnlineList);
 
       suggestionBox?.addEventListener("click", (event) => {
         const target = event.target;
@@ -565,7 +439,7 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
           if (input instanceof HTMLTextAreaElement) {
             input.value = "";
           }
-          if (suggestionBox) {
+          if (suggestionBox instanceof HTMLElement) {
             suggestionBox.classList.add("hidden");
             suggestionBox.innerHTML = "";
           }
@@ -587,49 +461,43 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         setNotificationsOpen(false);
       });
 
-      roomsDropdownToggle?.addEventListener("click", () => {
+      userMenuToggle?.addEventListener("click", () => {
+        if (!(userMenu instanceof HTMLElement)) return;
+        const willOpen = userMenu.classList.contains("hidden");
+        closeMenus();
         setNotificationsOpen(false);
+        userMenu.classList.toggle("hidden", !willOpen);
       });
 
-      deleteForms.forEach((formNode) => {
-        formNode.addEventListener("submit", (event) => {
-          if (!window.confirm("Delete this room? This cannot be undone.")) {
-            event.preventDefault();
-          }
-        });
+      appMenuToggle?.addEventListener("click", () => {
+        if (!(appMenu instanceof HTMLElement)) return;
+        const willOpen = appMenu.classList.contains("hidden");
+        closeMenus();
+        setNotificationsOpen(false);
+        appMenu.classList.toggle("hidden", !willOpen);
       });
 
-      membersToggle?.addEventListener("click", () => {
-        if (!(onlineSidebar instanceof HTMLElement) || !(roomsMobileBlock instanceof HTMLElement)) return;
-
-        const roomsDropdownMode = !roomsMobileBlock.classList.contains("hidden");
-        if (roomsDropdownMode || onlineAutoHidden) {
-          return;
-        }
-
-        onlineManualHidden = !onlineManualHidden;
-        applyResponsiveLayout();
+      mobileMembersToggle?.addEventListener("click", () => {
+        if (!(mobileMembersPanel instanceof HTMLElement)) return;
+        mobileMembersPanel.classList.toggle("hidden");
       });
 
       document.addEventListener("click", (event) => {
-        if (!notificationsOpen) return;
         const target = event.target;
         if (!(target instanceof Node)) return;
 
-        if (notificationsPanel?.contains(target) || bellWrap?.contains(target)) {
-          return;
+        if (notificationsOpen && !(notificationsPanel?.contains(target) || bellWrap?.contains(target))) {
+          setNotificationsOpen(false);
         }
 
-        setNotificationsOpen(false);
-      });
+        if (!(userMenu?.contains(target) || userMenuToggle?.contains(target))) {
+          userMenu?.classList.add("hidden");
+        }
 
-      const resizeObserver = new ResizeObserver(() => {
-        applyResponsiveLayout();
+        if (!(appMenu?.contains(target) || appMenuToggle?.contains(target))) {
+          appMenu?.classList.add("hidden");
+        }
       });
-
-      if (layoutGrid instanceof HTMLElement) {
-        resizeObserver.observe(layoutGrid);
-      }
 
       setInterval(() => {
         fetch(`/api/presence/ping?roomId=${roomId}`, { method: "POST" }).catch(() => {});
@@ -639,21 +507,33 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
         void refreshBell();
       }, 20000);
 
+      const themeApi = window.agoraTheme;
+      if (themeApi && themeToggleMenu instanceof HTMLButtonElement) {
+        const paintTheme = () => {
+          themeToggleMenu.textContent = `Theme: ${themeApi.enabled ? "Dark" : "Light"}`;
+        };
+
+        paintTheme();
+        themeToggleMenu.addEventListener("click", () => {
+          themeApi.toggle();
+          paintTheme();
+        });
+      }
+
       const soundApi = window.agoraSound;
-      if (soundToggle && soundApi) {
+      if (soundApi && soundToggleMenu instanceof HTMLButtonElement) {
         const paintSound = () => {
-          soundToggle.textContent = `Sound: ${soundApi.enabled ? "On" : "Off"}`;
+          soundToggleMenu.textContent = `Sound: ${soundApi.enabled ? "On" : "Off"}`;
         };
 
         paintSound();
-        soundToggle.addEventListener("click", () => {
+        soundToggleMenu.addEventListener("click", () => {
           soundApi.set(!soundApi.enabled);
           paintSound();
         });
       }
 
       syncOnlineCount();
-      applyResponsiveLayout();
       scrollMessagesToBottom();
       void refreshBell();
 
@@ -683,11 +563,13 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
 
       events.addEventListener("presence:update", (event) => {
         if (event instanceof MessageEvent) {
-          if (onlineList) {
+          if (onlineList instanceof HTMLElement) {
             onlineList.innerHTML = event.data;
           }
+          if (mobileOnlineList instanceof HTMLElement) {
+            mobileOnlineList.innerHTML = event.data;
+          }
           syncOnlineCount();
-          applyResponsiveLayout();
         }
       });
 
@@ -710,10 +592,8 @@ const onlineNames = onlineUsers.map((user) => user.displayName);
 
       window.addEventListener("beforeunload", () => {
         clearTimeout(presenceFlashTimer);
-        resizeObserver.disconnect();
         events.close();
       });
     </script>
   )}
 </BaseLayout>
-

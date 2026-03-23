@@ -14,7 +14,9 @@ export const POST: APIRoute = async (context) => {
     return new Response("Nickname must be at least 2 chars", { status: 400 });
   }
 
-  const target = `/chat/${encodeURIComponent(nextRoom.toLowerCase())}`;
+  const normalizedRoom = nextRoom.toLowerCase();
+  const target = normalizedRoom === "lobby" ? "/rooms" : `/chat/${encodeURIComponent(normalizedRoom)}`;
+
   const existing = await getCurrentSession(context);
   if (existing) {
     if (context.request.headers.get("HX-Request") === "true") {

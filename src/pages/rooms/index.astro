@@ -1,0 +1,176 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { LOBBY_SLUG } from "../../lib/constants";
+import { listRoomsWithOnlineCounts } from "../../lib/rooms";
+import { getCurrentSession } from "../../lib/session";
+
+const session = await getCurrentSession(Astro);
+if (!session) {
+  return Astro.redirect("/");
+}
+
+const rooms = await listRoomsWithOnlineCounts();
+---
+<BaseLayout title="Agora | Rooms">
+  <div x-data="{ roomOpen: false }" class="min-h-screen">
+    <main class="mx-auto w-full max-w-5xl p-4 md:py-6">
+      <header class="rounded-2xl border border-zinc-200 bg-white/80 px-4 py-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-900/80">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-wide text-sky-600">Agora</p>
+            <h1 class="mt-1 text-xl font-bold">Rooms</h1>
+            <p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">Pick a room to open live chat. Viber/Discord style flow.</p>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button type="button" class="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800" @click="roomOpen = true">Add Room</button>
+
+            <div class="relative">
+              <button id="user-menu-toggle" type="button" class="inline-flex items-center gap-2 rounded-lg border border-zinc-300 px-2 py-1 text-sm font-semibold text-zinc-800 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-800">
+                <span class="max-w-28 truncate">{session.displayName}</span>
+                <svg viewBox="0 0 20 20" fill="currentColor" class="size-3 opacity-70"><path d="M5.5 7.5 10 12l4.5-4.5" /></svg>
+              </button>
+              <div id="user-menu" class="absolute right-0 top-10 z-50 hidden w-44 rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+                <a href="/settings/profile" class="block rounded-lg px-3 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">Change nickname</a>
+                <form method="post" action="/api/session/logout">
+                  <button type="submit" class="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:text-rose-300 dark:hover:bg-rose-950/30">Log out</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="relative">
+              <button id="app-menu-toggle" type="button" aria-label="App settings" class="inline-flex size-8 items-center justify-center rounded-lg border border-zinc-300 text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Zm7-3.5a7.7 7.7 0 0 0-.11-1.3l2.01-1.57-2-3.46-2.42.79a7.7 7.7 0 0 0-2.24-1.3L13.9 2h-3.8l-.34 2.46a7.7 7.7 0 0 0-2.24 1.3l-2.42-.79-2 3.46 2.01 1.57A7.7 7.7 0 0 0 5 12c0 .44.04.87.11 1.3L3.1 14.87l2 3.46 2.42-.79c.68.54 1.44.98 2.24 1.3L10.1 22h3.8l.34-2.46c.8-.32 1.56-.76 2.24-1.3l2.42.79 2-3.46-2.01-1.57c.07-.43.11-.86.11-1.3Z" />
+                </svg>
+              </button>
+              <div id="app-menu" class="absolute right-0 top-10 z-50 hidden w-48 rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900">
+                <button id="theme-toggle-menu" type="button" class="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">Theme: Light</button>
+                <button id="sound-toggle-menu" type="button" class="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">Sound: On</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="mt-4 rounded-2xl border border-zinc-200 bg-white/80 p-3 dark:border-zinc-800 dark:bg-zinc-900/80">
+        <ul class="space-y-2">
+          {rooms.map((room) => (
+            <li class="rounded-xl border border-zinc-200/80 bg-zinc-50/70 dark:border-zinc-800/80 dark:bg-zinc-900/70">
+              <div class="flex items-start gap-2 p-2">
+                <a href={`/chat/${room.slug}`} class="flex-1 rounded-lg px-3 py-2 hover:bg-white dark:hover:bg-zinc-800/70">
+                  <div class="flex items-center gap-2">
+                    <p class="text-sm font-semibold">{room.name}</p>
+                    {room.slug === LOBBY_SLUG && <span class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:bg-sky-900/40 dark:text-sky-200">Default</span>}
+                  </div>
+                  <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{room.description || "No description"}</p>
+                  <p class="mt-1 text-[11px] text-zinc-500 dark:text-zinc-400">{room.onlineCount} in the room</p>
+                </a>
+
+                {room.slug !== LOBBY_SLUG && (
+                  <form method="post" action={`/api/rooms/${room.id}/delete`} class="room-delete-form">
+                    <button type="submit" class="rounded-lg border border-zinc-300 p-2 text-zinc-500 hover:text-rose-600 dark:border-zinc-700 dark:text-zinc-300 dark:hover:text-rose-300" title="Delete room" aria-label="Delete room">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="size-4">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M8 6V4h8v2m-9 0l1 14h6l1-14M10 10v7M14 10v7" />
+                      </svg>
+                    </button>
+                  </form>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </main>
+
+    <div x-show="roomOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="roomOpen = false">
+      <div class="w-full max-w-md rounded-2xl bg-white p-4 dark:bg-zinc-900">
+        <h3 class="text-lg font-semibold">Add room</h3>
+        <form method="post" action="/api/rooms" class="mt-3 space-y-2">
+          <input name="name" required minlength="2" maxlength="80" placeholder="Room name" class="w-full rounded-md border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
+          <input name="description" maxlength="120" placeholder="Description (optional)" class="w-full rounded-md border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-950" />
+          <div class="mt-3 flex justify-end gap-2">
+            <button type="button" class="rounded-lg border border-zinc-300 px-3 py-1 text-sm dark:border-zinc-700" @click="roomOpen = false">Cancel</button>
+            <button class="rounded-lg bg-zinc-900 px-3 py-1 text-sm text-white dark:bg-zinc-100 dark:text-zinc-900">Create</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline>
+    const userMenuToggle = document.getElementById("user-menu-toggle");
+    const userMenu = document.getElementById("user-menu");
+    const appMenuToggle = document.getElementById("app-menu-toggle");
+    const appMenu = document.getElementById("app-menu");
+    const themeToggleMenu = document.getElementById("theme-toggle-menu");
+    const soundToggleMenu = document.getElementById("sound-toggle-menu");
+    const deleteForms = document.querySelectorAll(".room-delete-form");
+
+    function closeMenus() {
+      userMenu?.classList.add("hidden");
+      appMenu?.classList.add("hidden");
+    }
+
+    userMenuToggle?.addEventListener("click", () => {
+      if (!(userMenu instanceof HTMLElement)) return;
+      const willOpen = userMenu.classList.contains("hidden");
+      closeMenus();
+      userMenu.classList.toggle("hidden", !willOpen);
+    });
+
+    appMenuToggle?.addEventListener("click", () => {
+      if (!(appMenu instanceof HTMLElement)) return;
+      const willOpen = appMenu.classList.contains("hidden");
+      closeMenus();
+      appMenu.classList.toggle("hidden", !willOpen);
+    });
+
+    document.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+
+      if (!(userMenu?.contains(target) || userMenuToggle?.contains(target))) {
+        userMenu?.classList.add("hidden");
+      }
+
+      if (!(appMenu?.contains(target) || appMenuToggle?.contains(target))) {
+        appMenu?.classList.add("hidden");
+      }
+    });
+
+    const themeApi = window.agoraTheme;
+    if (themeApi && themeToggleMenu instanceof HTMLButtonElement) {
+      const paintTheme = () => {
+        themeToggleMenu.textContent = `Theme: ${themeApi.enabled ? "Dark" : "Light"}`;
+      };
+
+      paintTheme();
+      themeToggleMenu.addEventListener("click", () => {
+        themeApi.toggle();
+        paintTheme();
+      });
+    }
+
+    const soundApi = window.agoraSound;
+    if (soundApi && soundToggleMenu instanceof HTMLButtonElement) {
+      const paintSound = () => {
+        soundToggleMenu.textContent = `Sound: ${soundApi.enabled ? "On" : "Off"}`;
+      };
+
+      paintSound();
+      soundToggleMenu.addEventListener("click", () => {
+        soundApi.set(!soundApi.enabled);
+        paintSound();
+      });
+    }
+
+    deleteForms.forEach((formNode) => {
+      formNode.addEventListener("submit", (event) => {
+        if (!window.confirm("Delete this room? This cannot be undone.")) {
+          event.preventDefault();
+        }
+      });
+    });
+  </script>
+</BaseLayout>

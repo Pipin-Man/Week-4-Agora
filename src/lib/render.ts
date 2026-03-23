@@ -10,8 +10,17 @@ type MessageView = {
   createdAt: Date;
 };
 
+function highlightMentions(safeText: string) {
+  return safeText.replace(
+    /@([a-zA-Z0-9_]{2,40})/g,
+    '<span class="font-semibold text-zinc-700 dark:text-zinc-300">@$1</span>'
+  );
+}
+
 export function renderMessage(message: MessageView) {
   const safeBody = escapeHtml(message.body);
+  const richBody = highlightMentions(safeBody);
+
   if (message.type === "system") {
     return `<li id="msg-${message.id}" class="my-2 text-center text-xs text-zinc-500 dark:text-zinc-400">${safeBody}</li>`;
   }
@@ -24,7 +33,7 @@ export function renderMessage(message: MessageView) {
         <span class="font-semibold text-zinc-900 dark:text-zinc-100">${escapeHtml(message.displayName)}</span>
         <time class="text-zinc-500 dark:text-zinc-400">${formatRelativeTime(new Date(message.createdAt))}</time>
       </div>
-      <p class="whitespace-pre-wrap break-words text-sm text-zinc-800 dark:text-zinc-200">${safeBody}</p>
+      <p class="whitespace-pre-wrap break-words text-sm text-zinc-800 dark:text-zinc-200">${richBody}</p>
     </div>
   </div>
 </li>`;
@@ -38,7 +47,7 @@ export function renderPresenceOob(onlineUsers: Array<{ displayName: string; colo
   const userItems = onlineUsers
     .map(
       (user) =>
-        `<li data-online="1" class="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-200"><span class="size-2 rounded-full" style="background:${escapeHtml(user.color)}"></span>${escapeHtml(user.displayName)}</li>`
+        `<li data-online="1" data-user-name="${escapeHtml(user.displayName)}" class="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-200"><span class="size-2 rounded-full" style="background:${escapeHtml(user.color)}"></span><button type="button" data-mention-name="${escapeHtml(user.displayName)}" class="truncate text-left hover:underline">${escapeHtml(user.displayName)}</button></li>`
     )
     .join("");
 
@@ -55,6 +64,7 @@ export function renderTypingOob(typingUsers: string[], locale: "en" | "gr" = "en
 export function renderPresenceFlash(text: string) {
   return `<div class="mb-2 rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-200">${escapeHtml(text)}</div>`;
 }
+
 export function renderBellOob(count: number) {
   const dot = count > 0 ? `<span class="absolute -top-1 -right-1 rounded-full bg-red-500 px-1 text-[10px] text-white">${count}</span>` : "";
   return `<button id="mention-bell" hx-swap-oob="outerHTML" type="button" class="relative rounded-full border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">Bell${dot}</button>`;
@@ -67,4 +77,3 @@ export function renderLoadOlderButton(nextCursor: string | null, roomId: string)
 
   return `<button id="load-older" class="mx-auto block rounded border border-zinc-300 px-3 py-1 text-xs dark:border-zinc-700" hx-get="/api/rooms/${roomId}/messages?before=${encodeURIComponent(nextCursor)}&limit=30" hx-target="#message-list" hx-swap="afterbegin">${copy.en.loadOlder}</button>`;
 }
-

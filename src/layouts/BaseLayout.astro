@@ -36,6 +36,20 @@ const { title = "Agora" } = Astro.props;
         }));
       });
 
+      const savedTheme = localStorage.getItem("agora_theme") === "dark";
+      window.agoraTheme = {
+        enabled: savedTheme,
+        set(next) {
+          this.enabled = !!next;
+          document.documentElement.classList.toggle("dark", this.enabled);
+          localStorage.setItem("agora_theme", this.enabled ? "dark" : "light");
+        },
+        toggle() {
+          this.set(!this.enabled);
+        }
+      };
+      window.agoraTheme.set(savedTheme);
+
       window.agoraSound = {
         enabled: localStorage.getItem("agora_sound") !== "off",
         set(next) {
