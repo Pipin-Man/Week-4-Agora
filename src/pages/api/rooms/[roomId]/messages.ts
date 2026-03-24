@@ -1,4 +1,4 @@
-﻿import type { APIRoute } from "astro";
+import type { APIRoute } from "astro";
 import { broadcastPresence, broadcastTyping } from "../../../../lib/broadcast";
 import { createMessage, listOlderMessages, markRoomActivity } from "../../../../lib/rooms";
 import { renderMessage, renderMessageOob } from "../../../../lib/render";
@@ -19,8 +19,14 @@ export const GET: APIRoute = async (context) => {
   }
 
   const before = new Date(beforeRaw);
-  const limit = Number(context.url.searchParams.get("limit") ?? "30");
-  const rows = await listOlderMessages(roomId, before, Number.isFinite(limit) ? Math.min(limit, 50) : 30);
+  if (Number.isNaN(before.getTime())) {
+    return new Response("Invalid cursor", { status: 400 });
+  }
+
+  const rawLimit = context.url.searchParams.get("limit") ?? "30";
+  const parsedLimit = Number.parseInt(rawLimit, 10);
+  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 30;
+  const rows = await listOlderMessages(roomId, before, limit);
   const ordered = [...rows].reverse();
 
   const html = ordered
@@ -84,3 +90,4 @@ export const POST: APIRoute = async (context) => {
 
   return new Response(null, { status: 204 });
 };
+
